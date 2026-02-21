@@ -37,21 +37,36 @@ COORDS_JSON = "site_coords.json"
 @st.cache_data
 def load_data(path: str = "sensor_log.csv") -> pd.DataFrame:
     df = pd.read_csv(path)
+    
+    # Ensure columns are numeric to prevent plotting errors
+    for col in ['tempC', 'humidity', 'aqi']:
+        if col in df.columns:
+            df[col] = pd.to_numeric(df[col], errors='coerce')
+
     # Parse time
     if 'timestamp' in df.columns:
         df['timestamp'] = pd.to_datetime(df['timestamp'], errors='coerce')
+
+    # --- THE FIX: Remove extreme outliers that break the graph scale ---
+    if 'tempC' in df.columns:
+        df = df[(df['tempC'] > -10) & (df['tempC'] < 100)] 
+    if 'humidity' in df.columns:
+        df = df[(df['humidity'] >= 0) & (df['humidity'] <= 100)]
+    # -----------------------------------------------------------------
+
     # Drop duplicate (timestamp, Location)
     if set(['timestamp','Location']).issubset(df.columns):
         df = df.drop_duplicates(subset=['timestamp','Location'])
+
     # Treat suspicious zeros as missing
     for c in ['aqi','mqRaw']:
         if c in df.columns:
             df.loc[df[c] == 0, c] = np.nan
+            
     return df
 
 df = load_data()
 df_hist = df.copy()
-
 # -----------------------------
 # Heat Index (NOAA/NWS Rothfusz + Steadman fallback)
 # -----------------------------
