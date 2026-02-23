@@ -7,6 +7,7 @@ import plotly.graph_objects as go
 from datetime import datetime, timedelta
 from streamlit_autorefresh import st_autorefresh
 from io import BytesIO
+from plotly.subplots import make_subplots
 
 # Optional for PDF/plots
 import matplotlib
@@ -31,49 +32,252 @@ count = st_autorefresh(interval=5000, limit=100, key="autorefresh")
 
 COORDS_JSON = "site_coords.json"
 
-# -----------------------------
-# Data Loading & Cleaning
-# -----------------------------
-@st.cache_data
-def load_data(path: str = "sensor_log.csv") -> pd.DataFrame:
-    df = pd.read_csv(path)
+df = pd.DataFrame()
+REALTIME_CSV = 'sensor_realtime.csv'
+
+# Read historical log and optional realtime feed separately
+df_hist = pd.DataFrame()
+df_live = pd.DataFrame()
+try:
+    if os.path.exists('sensor_log.csv'):
+        df_hist = pd.read_csv('sensor_log.csv')
+        # convert types
+        for c in ['tempC','humidity','aqi']:
+            if c in df_hist.columns:
+                df_hist[c] = pd.to_numeric(df_hist[c], errors='coerce')
+        if 'timestamp' in df_hist.columns:
+            df_hist['timestamp'] = pd.to_datetime(df_hist['timestamp'], errors='coerce')
+            df_hist = df_hist.sort_values(by='timestamp')
+        df_hist = df_hist.dropna(subset=['timestamp'])
+except Exception as e:
+    print(f"Error reading sensor_log.csv: {e}")
+
+try:
+    if os.path.exists(REALTIME_CSV):
+        df_live = pd.read_csv(REALTIME_CSV)
+        for c in ['tempC','humidity','aqi']:
+            if c in df_live.columns:
+                df_live[c] = pd.to_numeric(df_live[c], errors='coerce')
+        if 'timestamp' in df_live.columns:
+            df_live['timestamp'] = pd.to_datetime(df_live['timestamp'], errors='coerce')
+            df_live = df_live.sort_values(by='timestamp')
+        df_live = df_live.dropna(subset=['timestamp'])
+except Exception as e:
+    print(f"Error reading {REALTIME_CSV}: {e}")
+
+# Default dataframe used for plotting/historical views — combine history + live if available
+if not df_live.empty and not df_hist.empty:
+    df = pd.concat([df_hist, df_live], ignore_index=True).sort_values('timestamp')
+elif not df_live.empty:
+    df = df_live.copy()
+else:
+    df = df_hist.copy()
+
+# --- 3. MULTI-VARIABLE CHARTING ---
+if not df.empty:
+    # Create figure with a secondary y-axis to handle different scales
+    fig = make_subplots(specs=[[{"secondary_y": True}]])
+
+    # Add Temperature (Left Axis)
+    if 'timestamp' in df.columns and 'tempC' in df.columns:
+        fig.add_trace(
+            go.Scatter(x=df['timestamp'], y=df['tempC'], name="Temp (°C)", 
+                       line=dict(color='#ff4b4b', width=2)),
+            secondary_y=False,
+        )
+
+    # Add Humidity (Left Axis)
+    if 'timestamp' in df.columns and 'humidity' in df.columns:
+        fig.add_trace(
+            go.Scatter(x=df['timestamp'], y=df['humidity'], name="Humidity (%)", 
+                       line=dict(color='#ffa500', width=2)),
+            secondary_y=False,
+        )
+
+    # Add AQI (Right Axis) - This prevents AQI from squashing the Temp line
+    if 'timestamp' in df.columns and 'aqi' in df.columns:
+        fig.add_trace(
+            go.Scatter(x=df['timestamp'], y=df['aqi'], name="AQI (index)", 
+                       line=dict(color='#00d4ff', width=2)),
+            secondary_y=True,
+        )
+
+    # Add Forecasted points (Dotted lines) if they exist in your data
+    if 'AQI forecast (+30m)' in df.columns and 'timestamp' in df.columns:
+        fig.add_trace(
+            go.Scatter(x=df['timestamp'], y=df['AQI forecast (+30m)'], 
+                       name="AQI Forecast", line=dict(color='#00d4ff', dash='dot')),
+            secondary_y=True,
+        )
+# Style the layout for the Dark Theme
+    fig.update_layout(
+        template="plotly_dark",
+        title="Dasmariñas Environmental Trends",
+        hovermode="x unified",
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
+    )
+
+    # Set axis titles
+    fig.update_yaxes(title_text="Temperature (°C)", secondary_y=False)
+    fig.update_yaxes(title_text="AQI (MQ135)", secondary_y=True)
     
-    # Ensure columns are numeric to prevent plotting errors
-    for col in ['tempC', 'humidity', 'aqi']:
-        if col in df.columns:
-            df[col] = pd.to_numeric(df[col], errors='coerce')
+    # prediction confidence annotation (if available)
+    try:
+        if pred_conf is not None:
+            if pred_conf >= 0.8:
+                conf_bg = "#2ecc71"
+            elif pred_conf >= 0.6:
+                conf_bg = "#f1c40f"
+            else:
+                conf_bg = "#e74c3c"
+            fig.add_annotation(
+                text=f"Prediction confidence: {pred_conf:.0%}",
+                xref='paper', yref='paper', x=0.99, y=0.95,
+                showarrow=False, bgcolor=conf_bg, font=dict(color='black')
+            )
+    except Exception:
+        pass
 
-    # Parse time
-    if 'timestamp' in df.columns:
-        df['timestamp'] = pd.to_datetime(df['timestamp'], errors='coerce')
-
-    # --- THE FIX: Remove extreme outliers that break the graph scale ---
-    if 'tempC' in df.columns:
-        df = df[(df['tempC'] > -10) & (df['tempC'] < 100)] 
-    if 'humidity' in df.columns:
-        df = df[(df['humidity'] >= 0) & (df['humidity'] <= 100)]
-    # -----------------------------------------------------------------
-
-    # Drop duplicate (timestamp, Location)
-    if set(['timestamp','Location']).issubset(df.columns):
-        df = df.drop_duplicates(subset=['timestamp','Location'])
-
-    # Treat suspicious zeros as missing
-    for c in ['aqi','mqRaw']:
-        if c in df.columns:
-            df.loc[df[c] == 0, c] = np.nan
-            
-    return df
-
-df = load_data()
+    st.plotly_chart(fig, width='stretch')
+else:
+    st.warning("Waiting for valid data to display the chart...")
 df_hist = df.copy()
+# -----------------------------
+# Data Quality Checks (QC) & Sensor Trust Scoring
+# -----------------------------
+def run_qc_and_trust(df_in: pd.DataFrame):
+    df = df_in.copy()
+    now = pd.to_datetime(datetime.utcnow())
+    # thresholds
+    T_MIN, T_MAX = -20.0, 60.0
+    HUM_MIN, HUM_MAX = 0.0, 100.0
+    AQI_MIN, AQI_MAX = 0.0, 500.0
+
+    # flags for issues
+    df['qc_missing'] = df[['tempC','humidity','aqi','timestamp']].isna().any(axis=1)
+    df['qc_out_of_range'] = False
+    if 'tempC' in df.columns:
+        df.loc[df['tempC'].notna() & ((df['tempC'] < T_MIN) | (df['tempC'] > T_MAX)), 'qc_out_of_range'] = True
+    if 'humidity' in df.columns:
+        df.loc[df['humidity'].notna() & ((df['humidity'] < HUM_MIN) | (df['humidity'] > HUM_MAX)), 'qc_out_of_range'] = True
+    if 'aqi' in df.columns:
+        df.loc[df['aqi'].notna() & ((df['aqi'] < AQI_MIN) | (df['aqi'] > AQI_MAX)), 'qc_out_of_range'] = True
+
+    # large jumps per location (delta threshold per minute)
+    df['qc_jump'] = False
+    if 'timestamp' in df.columns and 'tempC' in df.columns and 'Location' in df.columns:
+        df = df.sort_values(['Location','timestamp'])
+        grp = df.groupby('Location')
+        for name, g in grp:
+            if len(g) < 2:
+                continue
+            dt = g['timestamp'].diff().dt.total_seconds().fillna(0) / 60.0
+            dtemp = g['tempC'].diff().abs().fillna(0)
+            # flag if temp change > 8°C within 1 minute, scaled
+            mask = (dt <= 5) & (dtemp > 8)
+            df.loc[mask.index, 'qc_jump'] = mask
+
+    df['qc_issue'] = df['qc_missing'] | df['qc_out_of_range'] | df['qc_jump']
+
+    # per-site summary
+    sites = []
+    for tag, group in df.groupby('Location') if 'Location' in df.columns else [(None, df)]:
+        total = len(group)
+        missing_pct = float(group['qc_missing'].sum() / total) if total else 0.0
+        oor_pct = float(group['qc_out_of_range'].sum() / total) if total else 0.0
+        recent = group.loc[group['timestamp'] >= (pd.to_datetime(now) - pd.Timedelta(days=1))] if 'timestamp' in group.columns else group
+        recent_anom_pct = float(recent['qc_issue'].sum() / len(recent)) if len(recent) else 0.0
+        last_ts = group['timestamp'].max() if 'timestamp' in group.columns else pd.NaT
+        freshness_min = float((pd.to_datetime(now) - pd.to_datetime(last_ts)).total_seconds()/60.0) if pd.notna(last_ts) else float('inf')
+        # trust score: start 1.0, subtract penalties
+        p_missing = 0.4 * missing_pct
+        p_oor = 0.3 * oor_pct
+        p_fresh = 0.2 * min(1.0, freshness_min / (24*60))
+        p_recent = 0.1 * recent_anom_pct
+        trust = max(0.0, 1.0 - (p_missing + p_oor + p_fresh + p_recent))
+        sites.append({'site': tag if tag is not None else 'global', 'total_rows': total,
+                      'missing_pct': missing_pct, 'out_of_range_pct': oor_pct,
+                      'recent_anom_pct': recent_anom_pct, 'last_seen': last_ts,
+                      'freshness_min': freshness_min, 'trust_score': trust})
+
+    df_sites = pd.DataFrame(sites)
+    if 'site' in df_sites.columns:
+        df_sites = df_sites.sort_values('site')
+    return df, df_sites
+
+
+# run QC and compute trust
+df_hist, sensors_summary = run_qc_and_trust(df_hist)
+
+# Sensor Health UI: show per-site trust scores and simple chart
+with st.expander("Sensor Health (QC & Trust Scores)", expanded=False):
+    st.write("Per-site sensor health summary (trust score, freshness, missing%):")
+    try:
+        if sensors_summary is not None and not sensors_summary.empty:
+            df_display = sensors_summary.copy()
+            df_display['trust_pct'] = (df_display['trust_score'] * 100).round(1)
+            st.dataframe(df_display[['site','trust_pct','missing_pct','out_of_range_pct','recent_anom_pct','last_seen']], use_container_width=True)
+            try:
+                chart_df = df_display.set_index('site')['trust_pct']
+                st.bar_chart(chart_df)
+            except Exception:
+                pass
+        else:
+            st.info("No sensor summary available.")
+    except Exception:
+        st.warning("Unable to render sensor health summary.")
+
+# 3. THE CHART (The "Separated" View)
+if not df.empty and 'timestamp' in df.columns:
+    # Create figure with a secondary y-axis for AQI
+    fig = make_subplots(specs=[[{"secondary_y": True}]])
+
+    # Temperature (Left Axis)
+    if 'tempC' in df.columns:
+        fig.add_trace(
+            go.Scatter(x=df['timestamp'], y=df['tempC'], name="Temp (°C)", line=dict(color='red')),
+            secondary_y=False,
+        )
+
+    # Humidity (Left Axis - Shares scale with Temp)
+    if 'humidity' in df.columns:
+        fig.add_trace(
+            go.Scatter(x=df['timestamp'], y=df['humidity'], name="Humidity (%)", line=dict(color='green')),
+            secondary_y=False,
+        )
+
+    # AQI (Right Axis - Separated so it doesn't squash the others)
+    if 'aqi' in df.columns:
+        fig.add_trace(
+            go.Scatter(x=df['timestamp'], y=df['aqi'], name="AQI", line=dict(color='blue')),
+            secondary_y=True,
+        )
+
+    fig.update_layout(template="plotly_dark", title="Dasmariñas Real-Time Monitor")
+    # add prediction confidence annotation if available
+    try:
+        if pred_conf is not None:
+            if pred_conf >= 0.8:
+                conf_bg = "#2ecc71"
+            elif pred_conf >= 0.6:
+                conf_bg = "#f1c40f"
+            else:
+                conf_bg = "#e74c3c"
+            fig.add_annotation(text=f"Prediction confidence: {pred_conf:.0%}", xref='paper', yref='paper', x=0.99, y=0.95, showarrow=False, bgcolor=conf_bg, font=dict(color='black'))
+    except Exception:
+        pass
+
+    st.plotly_chart(fig, width='stretch')
+else:
+    st.warning("Waiting for sensor data...")
+
 # -----------------------------
 # Heat Index (NOAA/NWS Rothfusz + Steadman fallback)
 # -----------------------------
 # Ref: NOAA/NWS heat index equation
 # https://www.wpc.ncep.noaa.gov/html/heatindex_equation.shtml
 def heat_index_celsius(temp_c: np.ndarray, rh: np.ndarray) -> np.ndarray:
-    T = temp_c * 9.0/5.0 + 32.0  # to °F
+    T = temp_c * 9.0/5.0 + 32.0  
     R = rh
     HI = (-42.379 + 2.04901523*T + 10.14333127*R - 0.22475541*T*R
           - 6.83783e-3*T*T - 5.481717e-2*R*R
@@ -84,7 +288,7 @@ def heat_index_celsius(temp_c: np.ndarray, rh: np.ndarray) -> np.ndarray:
     mask_high = (R > 85) & (T >= 80) & (T <= 87)
     adj[mask_high] = ((R[mask_high]-85)/10.0) * ((87 - T[mask_high])/5.0)
     HI = np.where(T < 80, T + 0.33*R - 0.70, HI + adj)
-    return (HI - 32.0) * 5.0/9.0  # back to °C
+    return (HI - 32.0) * 5.0/9.0  
 
 # PAGASA Heat Index Categories (°C)
 # Not Hazardous (<27), Caution (27–32), Extreme Caution (33–41), Danger (42–51), Extreme Danger (≥52)
@@ -157,14 +361,45 @@ except Exception as e:
     st.error(f"Model file not found or cannot be loaded. Please ensure '{MODEL_PATH}' is in the directory. Details: {e}")
     st.stop()
 
+
 label_map = {0: "Normal", 1: "Moderate", 2: "High"}
 
 # -----------------------------
 # Sidebar Controls
 # -----------------------------
-st.sidebar.header("📡 IoT Connection Settings")
-location_mode = st.sidebar.selectbox("Select Monitoring Site", ["A - Green Space", "B - Residential", "C - Commercial"])
+location_mode = st.sidebar.selectbox("Select Monitoring Site", ["A - Green Space (TUP CAVITE)", "B - Residential (PALIPARAN III)", "C - Commercial (SM DASMA)"])
 data_source = st.sidebar.radio("Data Source", ["Latest Reading", "Manual Input"])
+
+# Uploader for live CSV feed (optional). Saves to REALTIME_CSV and refreshes df_live.
+uploaded_live = st.sidebar.file_uploader("Upload live CSV (sensor_realtime.csv)", type=["csv"], help="Upload a CSV with columns: Location,timestamp,tempC,humidity,aqi")
+if uploaded_live is not None:
+    try:
+        data = uploaded_live.read()
+        with open(REALTIME_CSV, 'wb') as fh:
+            fh.write(data)
+        st.sidebar.success(f"Saved live feed to {REALTIME_CSV}")
+        try:
+            df_live = pd.read_csv(REALTIME_CSV)
+            for c in ['tempC','humidity','aqi']:
+                if c in df_live.columns:
+                    df_live[c] = pd.to_numeric(df_live[c], errors='coerce')
+            if 'timestamp' in df_live.columns:
+                df_live['timestamp'] = pd.to_datetime(df_live['timestamp'], errors='coerce')
+                df_live = df_live.sort_values(by='timestamp')
+            df_live = df_live.dropna(subset=['timestamp'])
+        except Exception as e:
+            st.sidebar.error(f"Failed to parse uploaded CSV: {e}")
+    except Exception as e:
+        st.sidebar.error(f"Failed to save uploaded file: {e}")
+
+if st.sidebar.button("Clear live feed file"):
+    try:
+        if os.path.exists(REALTIME_CSV):
+            os.remove(REALTIME_CSV)
+            df_live = pd.DataFrame()
+            st.sidebar.info("Cleared live feed file.")
+    except Exception as e:
+        st.sidebar.error(f"Failed to clear live file: {e}")
 
 # Forecast options
 st.sidebar.header("🕒 Forecast Settings")
@@ -184,9 +419,9 @@ map_basis = st.sidebar.selectbox("Map risk based on",
 # -----------------------------
 def default_coords():
     return {
-        'A': {'name': 'Green Space', 'lat': None, 'lon': None},
-        'B': {'name': 'Residential', 'lat': None, 'lon': None},
-        'C': {'name': 'Commercial', 'lat': None, 'lon': None},
+        'A': {'name': 'Green Space (TUP CAVITE)', 'lat': None, 'lon': None},
+        'B': {'name': 'Residential (PALIPARAN III)', 'lat': None, 'lon': None},
+        'C': {'name': 'Commercial (SM DASMA)', 'lat': None, 'lon': None},
     }
 
 @st.cache_resource
@@ -265,12 +500,15 @@ aqi_cat = epa_aqi_category(aqi)
 input_df = pd.DataFrame([[temp, hum, aqi]], columns=['tempC','humidity','aqi'])
 pred_idx = model.predict(input_df)[0]
 risk_level = label_map.get(int(pred_idx), "Unknown")
-
 # -----------------------------
 # Forecast utilities
 # -----------------------------
 def median_minutes_delta(ts: pd.Series, default=5.0) -> float:
-    ts_sorted = ts.sort_values().dropna()
+    ts_sorted = ts.dropna()
+    # Convert to datetime if strings
+    if ts_sorted.dtype == 'object':
+        ts_sorted = pd.to_datetime(ts_sorted, errors='coerce').dropna()
+    ts_sorted = ts_sorted.sort_values()
     if len(ts_sorted) < 3:
         return default
     deltas = ts_sorted.diff().dropna().dt.total_seconds() / 60.0
@@ -343,6 +581,9 @@ aqi_mae, aqi_rmse, aqi_n = backtest_mae_rmse(aqi_series, steps_horizon, forecast
 # Build future timestamps for plotting
 if not loc_df.empty and len(loc_df['timestamp'].dropna())>0:
     last_ts = loc_df['timestamp'].dropna().iloc[-1]
+    # Ensure last_ts is datetime
+    if isinstance(last_ts, str):
+        last_ts = pd.to_datetime(last_ts, errors='coerce')
     dt_minutes = max(1, int(round(median_min)))
     future_index = pd.date_range(start=last_ts + timedelta(minutes=dt_minutes),
                                  periods=steps_horizon, freq=f"{dt_minutes}min")
@@ -407,7 +648,6 @@ if not forecast_df.empty:
 
 fig.update_layout(height=420, margin=dict(l=0, r=0, t=30, b=0))
 st.plotly_chart(fig, use_container_width=True)
-
 # -----------------------------
 # Predictive Decision Support + Diagnostics
 # -----------------------------
@@ -430,8 +670,277 @@ with c2:
     st.markdown("**Forecast Diagnostic (backtest)**")
     st.write(f"- HI {forecast_minutes}m MAE={hi_mae:.2f}°C · RMSE={hi_rmse:.2f}°C · n={hi_n}")
     st.write(f"- AQI {forecast_minutes}m MAE={aqi_mae:.2f} · RMSE={aqi_rmse:.2f} · n={aqi_n}")
+    # show last retrain/test eval if available
+    if 'retrain_eval' in st.session_state:
+        re = st.session_state['retrain_eval']
+        try:
+            st.markdown("**Retrain/Test Eval (last run)**")
+            st.write(f"- Accuracy: {re['acc']*100:.2f}% (n_test={re.get('n_test','?')})")
+            cm_arr = np.array(re['cm'])
+            cm_df_main = pd.DataFrame(cm_arr, index=[f"act_{i}" for i in range(cm_arr.shape[0])], columns=[f"pred_{i}" for i in range(cm_arr.shape[1])])
+            st.dataframe(cm_df_main)
+            st.write("Classification Report:")
+            st.json(re['report'])
+            # Temporal results if available
+            if re.get('temporal'):
+                tr = re['temporal']
+                try:
+                    st.markdown("**Temporal Holdout Eval (last run)**")
+                    st.write(f"- Temporal Accuracy: {tr['acc']*100:.2f}% (n_test={tr.get('n_test','?')})")
+                    if tr.get('avg_conf') is not None:
+                        st.write(f"- Avg predicted class confidence: {tr['avg_conf']*100:.2f}%")
+                    cm_t = np.array(tr['cm'])
+                    cm_df_t = pd.DataFrame(cm_t, index=[f"act_{i}" for i in range(cm_t.shape[0])], columns=[f"pred_{i}" for i in range(cm_t.shape[1])])
+                    st.dataframe(cm_df_t)
+                    st.write("Temporal Classification Report:")
+                    st.json(tr['report'])
+                except Exception:
+                    pass
+        except Exception:
+            pass
     if st.button("Refresh Real-Time Feed"):
         st.rerun()
+
+    # -----------------------------
+    with st.expander("⚙️ Retrain & Test (debug)"):
+        st.write("Run a proper train/test split and evaluate a Decision Tree on held-out data.")
+        auto_label = st.checkbox("Auto-generate labels from `tempC`/`humidity`/`aqi` (creates temp_label/hum_label/aq_label/Category_Label)", value=True)
+        temporal_split = st.checkbox("Use temporal split (train on older rows, test on newer)", value=False)
+        if temporal_split:
+            holdout_mode = st.radio("Temporal holdout mode", ["last_percent","last_days"], index=0, horizontal=True)
+            if holdout_mode == 'last_percent':
+                holdout_percent = st.slider("Test holdout (percent of latest rows)", min_value=1, max_value=50, value=10)
+            else:
+                holdout_days = st.number_input("Test holdout (last N days)", min_value=1, max_value=365, value=7)
+        # External weather merge
+        ext_weather_file = st.file_uploader("Optional external-weather CSV (timestamp + rain_forecast)", type=["csv"], accept_multiple_files=False)
+        if ext_weather_file is not None:
+            merge_mode = st.radio("Merge method for external weather", ["exact","nearest"], index=1, horizontal=True)
+            tol_minutes = st.number_input("Nearest merge tolerance (minutes)", min_value=1, max_value=1440, value=30)
+        cv_enable = st.checkbox("Enable k-fold cross-validation (k-fold)", value=True)
+        cv_folds = st.slider("k (folds)", min_value=3, max_value=10, value=5)
+        auto_save = st.checkbox("Auto-save trained model when accuracy >=", value=False)
+        save_threshold = st.number_input("Auto-save threshold (%)", min_value=0.0, max_value=100.0, value=90.0, step=1.0)
+        save_filename = st.text_input("Save filename", value="dt_model_retrained.joblib")
+        run_diag = st.button("Run train/test evaluation")
+        if run_diag:
+            # Expected columns (user-provided guidance): temp_label, hum_label, aq_label, Category_Label
+            feature_cols = ['temp_label', 'hum_label', 'aq_label']
+            target_col = 'Category_Label'
+
+            working_df = df_hist.copy()
+            # Auto-generate labels if requested
+            if auto_label:
+                required_source = ['tempC', 'humidity', 'aqi']
+                missing_src = [c for c in required_source if c not in working_df.columns]
+                if missing_src:
+                    st.error(f"Cannot auto-generate labels: missing source columns {missing_src} (need tempC, humidity, aqi).")
+                    st.stop()
+
+                def make_temp_label(t):
+                    try:
+                        t = float(t)
+                    except Exception:
+                        return np.nan
+                    if t < 27:
+                        return 0
+                    if t <= 32:
+                        return 1
+                    return 2
+
+                def make_hum_label(h):
+                    try:
+                        h = float(h)
+                    except Exception:
+                        return np.nan
+                    if h < 40:
+                        return 0
+                    if h <= 70:
+                        return 1
+                    return 2
+
+                def make_aqi_label(a):
+                    try:
+                        a = float(a)
+                    except Exception:
+                        return np.nan
+                    if a <= 50:
+                        return 0
+                    if a <= 100:
+                        return 1
+                    return 2
+
+                working_df['temp_label'] = working_df['tempC'].apply(make_temp_label)
+                working_df['hum_label'] = working_df['humidity'].apply(make_hum_label)
+                working_df['aq_label'] = working_df['aqi'].apply(make_aqi_label)
+                # Compose Category_Label as rounded mean of the three labels (deterministic rule)
+                working_df['Category_Label'] = working_df[['temp_label', 'hum_label', 'aq_label']].mean(axis=1).round().astype('Int64')
+
+            missing = [c for c in feature_cols + [target_col] if c not in working_df.columns]
+            if missing:
+                st.error(f"Missing required columns for retrain/test: {missing}.\n\nExpected: {feature_cols + [target_col]}")
+            else:
+                try:
+                    from sklearn.model_selection import train_test_split
+                    from sklearn.tree import DecisionTreeClassifier
+                    from sklearn.metrics import accuracy_score, confusion_matrix, classification_report
+
+                    raw = working_df[feature_cols + [target_col]].dropna()
+                    if len(raw) < 10:
+                        st.warning(f"Not enough rows for reliable split (found {len(raw)}). Need >= 10 rows.")
+                    else:
+                        X = raw[feature_cols]
+                        y = raw[target_col].astype(int)
+                        strat = y if len(np.unique(y))>1 and len(y)>50 else None
+                        X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42, stratify=strat)
+                        clf = DecisionTreeClassifier(random_state=42)
+                        clf.fit(X_train, y_train)
+                        y_pred = clf.predict(X_test)
+
+                        acc = accuracy_score(y_test, y_pred)
+                        cm = confusion_matrix(y_test, y_pred)
+                        report = classification_report(y_test, y_pred, output_dict=True)
+
+                        # optionally run cross-validation on full raw set
+                        cv_results = None
+                        if cv_enable:
+                            try:
+                                from sklearn.model_selection import cross_val_score, StratifiedKFold
+                                if len(np.unique(y)) > 1:
+                                    cv = StratifiedKFold(n_splits=cv_folds, shuffle=True, random_state=42)
+                                    scores = cross_val_score(DecisionTreeClassifier(random_state=42), X, y, cv=cv, scoring='accuracy')
+                                else:
+                                    scores = cross_val_score(DecisionTreeClassifier(random_state=42), X, y, cv=cv_folds, scoring='accuracy')
+                                cv_results = {'mean': float(np.mean(scores)), 'std': float(np.std(scores)), 'folds': [float(s) for s in scores]}
+                                st.write(f"Cross-val ({cv_folds} folds) accuracy: {cv_results['mean']*100:.2f}% ± {cv_results['std']*100:.2f}%")
+                            except Exception as e:
+                                st.warning(f"Cross-validation failed: {e}")
+
+                        # If external weather provided, merge into working_df
+                        if ext_weather_file is not None:
+                            try:
+                                ext_df = pd.read_csv(ext_weather_file)
+                                # try common timestamp column names
+                                ts_cols = [c for c in ext_df.columns if 'time' in c.lower() or 'timestamp' in c.lower() or c.lower()=='ts']
+                                if not ts_cols:
+                                    st.warning("External CSV lacks a recognizable timestamp column. Expected column like 'timestamp' or 'time'. Skipping merge.")
+                                else:
+                                    ext_ts_col = ts_cols[0]
+                                    ext_df[ext_ts_col] = pd.to_datetime(ext_df[ext_ts_col], errors='coerce')
+                                    if 'timestamp' in working_df.columns:
+                                        working_df['timestamp'] = pd.to_datetime(working_df['timestamp'], errors='coerce')
+                                    if merge_mode == 'exact':
+                                        working_df = pd.merge(working_df, ext_df, left_on='timestamp', right_on=ext_ts_col, how='left')
+                                    else:
+                                        # nearest merge using merge_asof
+                                        working_df = working_df.sort_values('timestamp')
+                                        ext_df = ext_df.sort_values(ext_ts_col)
+                                        working_df = pd.merge_asof(working_df, ext_df, left_on='timestamp', right_on=ext_ts_col, direction='nearest', tolerance=pd.Timedelta(minutes=int(tol_minutes)))
+                            except Exception as e:
+                                st.warning(f"Failed to read/merge external weather CSV: {e}")
+
+                        # Optionally perform a temporal split evaluation (time-series holdout)
+                        temporal_results = None
+                        if temporal_split:
+                            if 'timestamp' not in working_df.columns or working_df['timestamp'].isna().all():
+                                st.warning("Temporal split requested but no valid `timestamp` column available in data.")
+                            else:
+                                try:
+                                    raw_ts = working_df.dropna(subset=feature_cols + [target_col, 'timestamp']).sort_values('timestamp')
+                                    n_ts = len(raw_ts)
+                                    if n_ts < 10:
+                                        st.warning(f"Not enough timestamped rows for temporal split (found {n_ts}).")
+                                    else:
+                                        if 'holdout_mode' in locals() and holdout_mode == 'last_percent':
+                                            test_size = max(1, int(round(n_ts * float(holdout_percent) / 100.0)))
+                                            split_idx = n_ts - test_size
+                                            train_ts = raw_ts.iloc[:split_idx]
+                                            test_ts = raw_ts.iloc[split_idx:]
+                                        else:
+                                            # last N days
+                                            latest = raw_ts['timestamp'].max()
+                                            cutoff = latest - timedelta(days=int(holdout_days))
+                                            train_ts = raw_ts[raw_ts['timestamp'] < cutoff]
+                                            test_ts = raw_ts[raw_ts['timestamp'] >= cutoff]
+                                        if len(test_ts) == 0:
+                                            st.warning("Temporal split resulted in empty test set; adjust holdout settings or provide more data.")
+                                        else:
+                                            X_tr_ts = train_ts[feature_cols]
+                                            y_tr_ts = train_ts[target_col].astype(int)
+                                            X_te_ts = test_ts[feature_cols]
+                                            y_te_ts = test_ts[target_col].astype(int)
+                                            clf_ts = DecisionTreeClassifier(random_state=42)
+                                            clf_ts.fit(X_tr_ts, y_tr_ts)
+                                            y_pred_ts = clf_ts.predict(X_te_ts)
+                                            acc_ts = accuracy_score(y_te_ts, y_pred_ts)
+                                            cm_ts = confusion_matrix(y_te_ts, y_pred_ts)
+                                            report_ts = classification_report(y_te_ts, y_pred_ts, output_dict=True)
+                                            # average confidence if available
+                                            avg_conf = None
+                                            if hasattr(clf_ts, 'predict_proba'):
+                                                try:
+                                                    probs = clf_ts.predict_proba(X_te_ts)
+                                                    avg_conf = float(np.mean(np.max(probs, axis=1)))
+                                                except Exception:
+                                                    avg_conf = None
+                                            temporal_results = {
+                                                'acc': float(acc_ts), 'cm': cm_ts.tolist(), 'report': report_ts,
+                                                'n_test': int(len(y_te_ts)), 'avg_conf': avg_conf
+                                            }
+                                            st.write(f"Temporal-split accuracy: {acc_ts*100:.2f}% (n_test={len(y_te_ts)})")
+                                            st.write("Temporal Confusion Matrix:")
+                                            st.dataframe(pd.DataFrame(cm_ts, index=[f"act_{i}" for i in range(cm_ts.shape[0])], columns=[f"pred_{i}" for i in range(cm_ts.shape[1])]))
+                                            st.write("Temporal Classification Report:")
+                                            st.json(report_ts)
+                                            if avg_conf is not None:
+                                                st.write(f"Average predicted class confidence (temporal test): {avg_conf*100:.2f}%")
+                                except Exception as e:
+                                    st.warning(f"Temporal split evaluation failed: {e}")
+
+                        # persist metrics to session state for display elsewhere
+                        st.session_state['retrain_eval'] = {
+                            'acc': float(acc),
+                            'cm': cm.tolist(),
+                            'report': report,
+                            'n_test': int(len(y_test)),
+                            'cv': cv_results,
+                            'temporal': temporal_results
+                        }
+
+                        st.success(f"Accuracy on test set: {acc*100:.2f}% (n_test={len(y_test)})")
+                        st.write("Confusion Matrix (rows=actual, cols=predicted):")
+                        cm_df = pd.DataFrame(cm, index=[f"act_{i}" for i in range(cm.shape[0])], columns=[f"pred_{i}" for i in range(cm.shape[1])])
+                        st.dataframe(cm_df)
+                        st.write("Classification Report:")
+                        st.json(report)
+                        st.write("Trained Decision Tree feature importances:")
+                        fi = getattr(clf, 'feature_importances_', None)
+                        if fi is not None:
+                            fi_map = {c: float(v) for c, v in zip(feature_cols, fi)}
+                            st.write(fi_map)
+                        else:
+                            st.write("Feature importances not available.")
+                        # Auto-save if requested and accuracy threshold met
+                        if auto_save:
+                            try:
+                                if (acc * 100.0) >= float(save_threshold):
+                                    joblib.dump(clf, save_filename)
+                                    st.success(f"Trained model saved to {save_filename} (accuracy {acc*100:.2f}%)")
+                                    st.session_state['last_saved_model'] = save_filename
+                                else:
+                                    st.info(f"Model not saved: accuracy {acc*100:.2f}% < threshold {save_threshold}%")
+                            except Exception as e:
+                                st.error(f"Failed to save model: {e}")
+                        # Manual save option
+                        if st.button("Save trained model now"):
+                            try:
+                                joblib.dump(clf, save_filename)
+                                st.success(f"Trained model saved to {save_filename}")
+                                st.session_state['last_saved_model'] = save_filename
+                            except Exception as e:
+                                st.error(f"Failed to save model: {e}")
+                except Exception as e:
+                    st.error(f"Failed to run retrain/test: {e}")
 
 with c1:
     st.markdown("### 🧭 Health Guidance Context")
@@ -643,13 +1152,16 @@ fig_map.update_layout(
     mapbox_zoom=11,
     margin=dict(l=0, r=0, t=0, b=0), height=480
 )
-st.plotly_chart(fig_map, use_container_width=True)
+st.plotly_chart(fig_map, use_container_width='stretch')
 
 # -----------------------------
 # Historical Analytics
 # -----------------------------
 with st.expander("🔎 View Historical Analytics for this Location"):
-    st.write(loc_df.describe())
+    # Show only numeric columns in describe() to avoid timestamp conversion issues
+    numeric_cols = loc_df.select_dtypes(include=['number']).columns.tolist()
+    if numeric_cols:
+        st.write(loc_df[numeric_cols].describe())
     if 'HI_Category' in df_hist.columns:
         st.write("**Heat Index Category Counts (PAGASA)**")
         st.write(df_hist[df_hist['Location']==loc_tag]['HI_Category'].value_counts())
@@ -665,7 +1177,11 @@ st.markdown("### 📤 Export 24‑Hour Forecast (CSV / PDF)")
 # Build 24h forecast series for this site
 if not loc_df.empty:
     dt_minutes = max(1, int(round(median_min)))
-    future_index_24h = pd.date_range(start=loc_df['timestamp'].dropna().iloc[-1] + timedelta(minutes=dt_minutes),
+    last_ts_24h = loc_df['timestamp'].dropna().iloc[-1]
+    # Ensure last_ts_24h is datetime
+    if isinstance(last_ts_24h, str):
+        last_ts_24h = pd.to_datetime(last_ts_24h, errors='coerce')
+    future_index_24h = pd.date_range(start=last_ts_24h + timedelta(minutes=dt_minutes),
                                      periods=steps_24h, freq=f"{dt_minutes}min")
     hi_fore_24h = forecast_next(hi_series, steps=steps_24h, method=forecast_method, window=12)
     aqi_fore_24h = forecast_next(aqi_series, steps=steps_24h, method=forecast_method, window=12)
