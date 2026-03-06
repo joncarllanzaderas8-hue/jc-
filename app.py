@@ -14,7 +14,25 @@ from preprocessing import preprocess_site, SITE_NAME  # retains your A/B/C defau
 from des import holt_forecast, tune_holt
 from aqi import categorize_aqi  # EPA AQI categorizer (index -> (label, color))
 
+function calculateHeatIndex(tempC, humidity) {
+    // 1. Convert Celsius to Fahrenheit
+    let T = (tempC * 9/5) + 32;
+    let RH = humidity;
 
+    // 2. Simple formula for lower temperatures
+    let hi = 0.5 * (T + 61.0 + ((T - 68.0) * 1.2) + (RH * 0.094));
+
+    // 3. If the simple heat index is 80°F or higher, use the full regression
+    if (hi >= 80) {
+        hi = -42.379 + 2.04901523 * T + 10.14333127 * RH 
+             - 0.22475541 * T * RH - 0.00683783 * T * T 
+             - 0.05481717 * RH * RH + 0.00122874 * T * T * RH 
+             + 0.00085282 * T * RH * RH - 0.00000199 * T * T * RH * RH;
+    }
+
+    // 4. Convert back to Celsius for your dashboard
+    return (hi - 32) * 5/9;
+}
 # ---------- Page config ----------
 st.set_page_config(page_title="Barangay Microclimate Forecast", layout="wide")
 st.title("Barangay Microclimate Monitoring — 4‑Hour Forecasts")
