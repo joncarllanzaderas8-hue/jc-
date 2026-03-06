@@ -62,7 +62,8 @@ with st.sidebar:
     st.header("Controls")
     uploaded = st.file_uploader("Upload sensor_log.csv", type=["csv"])
     default_path = os.path.join("sensor_log.csv")
-   auto_tune = st.checkbox(
+
+    auto_tune = st.checkbox(
         "Auto‑tune α, β per signal",
         value=False,
         help="Grid search per site & per signal to minimize RMSE",
