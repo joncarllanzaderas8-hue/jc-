@@ -98,10 +98,11 @@ def detect_sites_and_labels(df: pd.DataFrame) -> tuple[list[str], dict, dict]:
 site_codes, CODE2LABEL, LABEL2CODE = detect_sites_and_labels(raw)
 
 
-# ---------- Signals & helpers (dynamically include PM2.5 if present) ----------
+# ---------- Signals & helpers ----------
 signals = {
     "tempC":    {"label": "Temperature", "unit": "°C",      "color": "#ff6b6b", "clip": (None, None)},
     "humidity": {"label": "Humidity",    "unit": "%",       "color": "#4ecdc4", "clip": (0, 100)},
+    "heat_index": {"label": "Heat Index", "unit": "°C",     "color": "#ff8c00", "clip": (None, None)}, # <--- Add this
     "mqRaw":    {"label": "MQ Gas Raw",  "unit": "raw",     "color": "#ffd93d", "clip": (None, None)},
     "aqi":      {"label": "AQI",         "unit": "",        "color": "#6bcb77", "clip": (0, None)},
 }
@@ -110,6 +111,23 @@ if "pm25" in raw.columns:
 
 
 # ---------- Category utilities ----------
+def calculate_heat_index(temp_c, humidity):
+    T = (temp_c * 9/5) + 32
+    RH = humidity
+    hi = 0.5 * (T + 61.0 + ((T - 68.0) * 1.2) + (RH * 0.094))
+    if hi > 80:
+        hi = -42.379 + 2.04901523*T + 10.14333127*RH - 0.22475541*T*RH \
+             - 6.83783e-3*T*T - 5.481717e-2*RH*RH + 1.22874e-3*T*T*RH \
+             + 8.5282e-4*T*RH*RH - 1.99e-6*T*T*RH*RH
+    return (hi - 32) * 5/9
+
+def get_pagasa_hi_category(hi_c):
+    if hi_c < 27: return "Not Hazardous", "#00e400"
+    if hi_c <= 32: return "Caution", "#ffff00"
+    if hi_c <= 41: return "Extreme Caution", "#ff7e00"
+    if hi_c <= 51: return "Danger", "#ff0000"
+    return "Extreme Danger", "#7e0023"
+
 def categorize_pm25_denr(pm25_value: float) -> tuple[str, str]:
     """
     DENR DAO 2020-14 PM2.5 breakpoints (µg/m³):
@@ -134,6 +152,19 @@ def categorize_pm25_denr(pm25_value: float) -> tuple[str, str]:
         return ("Acutely Unhealthy", "#8f3f97")  # purple-ish
     return ("Emergency", "#7e0023")              # maroon
 
+def process_site(df: pd.DataFrame, site_code: str, steps: int,
+                 alpha: float | None, beta: float | None, auto_tune: bool):
+    # ... existing code ...
+    proc = preprocess_site(site_df)
+    
+    # --- ADD THIS LINE HERE ---
+    if "tempC" in proc.columns and "humidity" in proc.columns:
+        proc["heat_index"] = proc.apply(lambda r: calculate_heat_index(r["tempC"], r["humidity"]), axis=1)
+    # ---------------------------
+
+    if proc.empty:
+        return None
+    # ... rest of function ...
 
 def label_categories_vector(values: np.ndarray, scale: str) -> list[str]:
     """
@@ -388,7 +419,16 @@ if tab_choice == "Single site":
         else:
             # not the "category-driving" series; leave blank
             cat_list = [""] * len(res["forecast"])
-
+                
+                # Add Heat Index Badge:
+                if "heat_index" in proc.columns:
+                    hi_val = float(proc["heat_index"].iloc[-1])
+                    hi_cat, hi_color = get_pagasa_hi_category(hi_val)
+                    st.markdown(
+                        f"Heat Index: **{hi_val:.1f} °C** — "
+                        f"<span style='color:{hi_color}'>{hi_cat}</span>",
+                        unsafe_allow_html=True,
+                    )
         for i, ts in enumerate(future_idx):
             export_rows.append(
                 {
