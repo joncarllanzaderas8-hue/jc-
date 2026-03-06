@@ -669,25 +669,9 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import joblib
-import plotly.graph_objects as go
-from datetime import datetime, timedelta
 from streamlit_autorefresh import st_autorefresh
 from io import BytesIO
 
-# Optional for PDF/plots
-import matplotlib
-matplotlib.use('Agg')
-import matplotlib.pyplot as plt
-
-# ---- PDF GUARD: allow app to run even if reportlab isn't installed
-REPORTLAB_OK = True
-try:
-    from reportlab.lib.pagesizes import A4
-    from reportlab.pdfgen import canvas
-    from reportlab.lib.units import cm
-    from reportlab.lib.utils import ImageReader
-except Exception:
-    REPORTLAB_OK = False
 
 # -----------------------------
 # Page & Auto-refresh
