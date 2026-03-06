@@ -663,3 +663,83 @@ st.info(
     "90% CIs; humidity clipped to [0,100] and AQI ≥ 0. Categories: EPA/AirNow AQI (0–500) or "
     "DENR PM2.5 (DAO 2020‑14), selectable at left."
 )
+
+# -----------------------------
+# Heat Index (NOAA/NWS Rothfusz + Steadman fallback)
+# -----------------------------
+# Ref: NOAA/NWS heat index equation
+# https://www.wpc.ncep.noaa.gov/html/heatindex_equation.shtml
+def heat_index_celsius(temp_c: np.ndarray, rh: np.ndarray) -> np.ndarray:
+    T = temp_c * 9.0/5.0 + 32.0  # to °F
+    R = rh
+    HI = (-42.379 + 2.04901523*T + 10.14333127*R - 0.22475541*T*R
+          - 6.83783e-3*T*T - 5.481717e-2*R*R
+          + 1.22874e-3*T*T*R + 8.5282e-4*T*R*R - 1.99e-6*T*T*R*R)
+    adj = np.zeros_like(HI, dtype=float)
+    mask_low = (R < 13) & (T >= 80) & (T <= 112)
+    adj[mask_low] = -((13 - R[mask_low])/4.0) * np.sqrt((17 - np.abs(T[mask_low]-95))/17.0)
+    mask_high = (R > 85) & (T >= 80) & (T <= 87)
+    adj[mask_high] = ((R[mask_high]-85)/10.0) * ((87 - T[mask_high])/5.0)
+    HI = np.where(T < 80, T + 0.33*R - 0.70, HI + adj)
+    return (HI - 32.0) * 5.0/9.0  # back to °C
+
+# PAGASA Heat Index Categories (°C)
+# Not Hazardous (<27), Caution (27–32), Extreme Caution (33–41), Danger (42–51), Extreme Danger (≥52)
+def pagasa_hi_category(hi_c: float) -> str:
+    if not np.isfinite(hi_c):
+        return '—'
+    if hi_c < 27: return "Not Hazardous"
+    if hi_c <= 32: return "Caution (27–32°C)"
+    if hi_c <= 41: return "Extreme Caution (33–41°C)"
+    if hi_c <= 51: return "Danger (42–51°C)"
+    return "Extreme Danger (≥52°C)"
+
+# US EPA AQI Categories (index)
+def epa_aqi_category(aqi_value: float) -> str:
+    if aqi_value is None or (isinstance(aqi_value, float) and np.isnan(aqi_value)):
+        return "—"
+    aqi = float(aqi_value)
+    if aqi <= 50: return "Good"
+    if aqi <= 100: return "Moderate"
+    if aqi <= 150: return "Unhealthy for Sensitive Groups"
+    if aqi <= 200: return "Unhealthy"
+    if aqi <= 300: return "Very Unhealthy"
+    return "Hazardous"
+
+AQI_COLORS = {
+    "Good": "#009966",
+    "Moderate": "#FFDE33",
+    "Unhealthy for Sensitive Groups": "#FF9933",
+    "Unhealthy": "#CC0033",
+    "Very Unhealthy": "#660099",
+    "Hazardous": "#7E0023",
+    "—": "#999999"
+}
+
+RISK_COLORS = {
+    "Normal": "#2B8A3E",
+    "Moderate": "#F59F00",
+    "High": "#D9480F",
+    "Unknown": "#868E96"
+}
+
+HI_BAND_SHAPES = [
+    (None, 27, 'rgba(0,0,0,0)'),
+    (27, 32, 'rgba(255,235,132,0.25)'),
+    (32, 41, 'rgba(255,165,0,0.20)'),
+    (41, 51, 'rgba(255,69,58,0.20)'),
+    (51, None, 'rgba(156,39,176,0.15)')
+]
+
+# Pre-compute Heat Index for history
+if set(['tempC','humidity']).issubset(df_hist.columns):
+    df_hist['heat_index_C'] = heat_index_celsius(df_hist['tempC'].values, df_hist['humidity'].values)
+    df_hist['HI_Category'] = df_hist['heat_index_C'].apply(pagasa_hi_category)
+else:
+    df_hist['heat_index_C'] = np.nan
+    df_hist['HI_Category'] = "—"
+
+if 'aqi' in df_hist.columns:
+    df_hist['AQI_Category'] = df_hist['aqi'].apply(epa_aqi_category)
+else:
+    df_hist['AQI_Category'] = "—"
