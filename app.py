@@ -1439,3 +1439,37 @@ try:
 
 except Exception as e:
     st.error(f"Please ensure 'sensor_log.csv' is in the same directory. Error: {e}")
+
+import streamlit as st
+import pandas as pd
+import numpy as np
+import plotly.graph_objects as go
+from datetime import datetime
+from collections import deque
+import time
+
+# --- Configuration ---
+SIGNALS = {
+    'tempC':    {'label': 'Temperature',   'unit': '°C',  'color': '#ff6b6b', 'warn': 35,  'ylim': (24, 40)},
+    'humidity': {'label': 'Humidity',      'unit': '%',   'color': '#4ecdc4', 'warn': 90,  'ylim': (55, 105)},
+    'mqRaw':    {'label': 'MQ Gas Sensor', 'unit': 'raw', 'color': '#ffd93d', 'warn': 350, 'ylim': (50, 550)},
+    'aqi':      {'label': 'AQI',           'unit': '',    'color': '#6bcb77', 'warn': 50,  'ylim': (0, 80)},
+}
+
+FORECAST_STEPS = 48  # 4 hours
+HOLT_ALPHA = 0.30
+HOLT_BETA = 0.15
+
+# --- Holt's Double Exponential Smoothing Logic ---
+def holt_forecast(series, alpha=HOLT_ALPHA, beta=HOLT_BETA, steps=FORECAST_STEPS):
+    y = np.array(series, dtype=float)
+    n = len(y)
+    if n < 2:
+        return np.full(steps, y[-1]), 0.0
+
+    l, b = np.zeros(n), np.zeros(n)
+    l[0], b[0] = y[0], y[1] - y[0]
+
+    for t in range(1, n):
+        l[t] = alpha * y[t] + (1 - alpha) * (l[t-1] + b[t-1])
+        b[t] = beta * (l[t] - l[t-1]) + (1 - beta) * b[t-1]
