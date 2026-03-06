@@ -31,6 +31,9 @@ st.set_page_config(page_title="Barangay Microclimate Forecast", layout="wide")
 st.title("Barangay Microclimate Monitoring — 4‑Hour Forecasts")
 st.caption("Holt's Double Exponential Smoothing (DES) — 5‑minute resolution, 90% confidence bands")
 
+# Add this to your parameters dictionary in app.py
+"heatIndex": {"alpha": 0.3, "beta": 0.1, "rmse": 1.0}
+
 def calculate_heat_index(temp_c, humidity):
     T = (temp_c * 9/5) + 32
     RH = humidity
