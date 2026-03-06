@@ -15,6 +15,28 @@ from des import holt_forecast, tune_holt
 from aqi import categorize_aqi  # EPA AQI categorizer (index -> (label, color))
 
 with st.sidebar:
+    with st.expander("📖 Dashboard User Guide"):
+        st.markdown("""
+        ### 1. Select Your Location
+        Use the **'Site'** dropdown to choose a specific area (e.g., SM Dasma). The map will center on this location.
+        
+        ### 2. Choose a Metric
+        Switch between **Temperature, Humidity, or Heat Index**. 
+        * *Note: Heat Index tells you the 'Real Feel'—very important for health!*
+
+        ### 3. Understanding the Forecast
+        The graph shows **Actual Data** (dots/solid line) vs. **Holt's DES Forecast** (dashed line).
+        * **Alpha (Level):** How much the forecast reacts to recent data.
+        * **Beta (Trend):** How much the forecast follows the upward or downward 'slope'.
+        * **RMSE:** This shows the error margin. Lower is more accurate!
+
+        ### 4. The Map Colors
+        * **Green/Yellow:** Safe levels.
+        * **Orange/Red:** High Heat or Poor Air Quality.
+        * **Black/Empty:** No sensor data currently reporting from that zone.
+        """)
+        
+with st.sidebar:
     st.divider()
     with st.expander("❓ How to read this Dashboard"):
         st.markdown("""
