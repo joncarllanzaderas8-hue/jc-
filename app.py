@@ -18,10 +18,10 @@ with st.sidebar:
     with st.expander("📖 Dashboard User Guide"):
         st.markdown("""
         ### 1. Select Your Location
-        Use the **'Site'** dropdown to choose a specific area (e.g., SM Dasma). The map will center on this location.
+        Use the **'Site'** dropdown to choose a specific area (e.g., Paliparan III). The map will center on this location.
         
         ### 2. Choose a Metric
-        Switch between **Temperature, Humidity, or Heat Index**. 
+        Switch between **Temperature, Humidity, Heat Index, Air Quality Index(AQI)**. 
         * *Note: Heat Index tells you the 'Real Feel'—very important for health!*
 
         ### 3. Understanding the Forecast
