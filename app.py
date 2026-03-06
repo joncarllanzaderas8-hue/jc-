@@ -1322,3 +1322,69 @@ with st.expander("🪪 Model Card"):
     st.write("**Limitations**: Designed for shaded/light-wind conditions for HI; full sun can increase perceived temperature. AQI mapped as an index (dimensionless).")
 
 st.caption("Developed for the Dasmariñas Environmental Monitoring Project. Standards: NOAA/NWS Heat Index; PAGASA HI categories; US EPA AQI.")
+
+import threading
+import time
+import queue
+import json
+import re
+from datetime import datetime
+from collections import deque
+from IPython.display import clear_output, display
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+import matplotlib.dates as mdates
+import matplotlib.gridspec as gridspec
+import warnings
+
+# Configuration
+SIGNALS = {
+    'tempC':    {'label': 'Temperature',   'unit': '°C',  'color': '#ff6b6b', 'warn': 35,  'ylim': (24, 40)},
+    'humidity': {'label': 'Humidity',      'unit': '%',   'color': '#4ecdc4', 'warn': 90,  'ylim': (55, 105)},
+    'mqRaw':    {'label': 'MQ Gas Sensor', 'unit': 'raw', 'color': '#ffd93d', 'warn': 350, 'ylim': (50, 550)},
+    'aqi':      {'label': 'AQI',           'unit': '',    'color': '#6bcb77', 'warn': 50,  'ylim': (0, 80)},
+}
+
+FORECAST_STEPS = 48   # 4 hours
+HOLT_ALPHA = 0.30     # Level smoothing
+HOLT_BETA = 0.15      # Trend smoothing
+CI_Z = 1.645          # 90% Confidence Interval
+
+def holt_forecast(series, alpha=HOLT_ALPHA, beta=HOLT_BETA, steps=FORECAST_STEPS):
+    y = np.array(series, dtype=float)
+    n = len(y)
+    if n < 2: return np.full(steps, y[-1]), np.full(steps, y[-1]), np.full(steps, y[-1]), 0.0
+    
+    l, b = np.zeros(n), np.zeros(n)
+    l[0], b[0] = y[0], y[1] - y[0]
+    for t in range(1, n):
+        l[t] = alpha * y[t] + (1 - alpha) * (l[t-1] + b[t-1])
+        b[t] = beta  * (l[t] - l[t-1]) + (1 - beta) * b[t-1]
+        
+    forecasts = np.array([l[-1] + (h+1)*b[-1] for h in range(steps)])
+    rmse = np.sqrt(np.mean((y[1:] - (l[:-1] + b[:-1]))**2))
+    lower = forecasts - CI_Z * rmse * np.sqrt(np.arange(1, steps+1))
+    upper = forecasts + CI_Z * rmse * np.sqrt(np.arange(1, steps+1))
+    return forecasts, lower, upper, rmse
+
+def render_dashboard(live_buf, new_row=None, alerts=None):
+    df_live = pd.DataFrame(list(live_buf)).set_index('timestamp')
+    last_ts = df_live.index[-1]
+    future_idx = pd.date_range(last_ts + pd.Timedelta('5min'), periods=FORECAST_STEPS, freq='5min')
+    
+    fig = plt.figure(figsize=(18, 15), facecolor='#0f1117')
+    gs = gridspec.GridSpec(2, 2, figure=fig, hspace=0.5, wspace=0.3)
+    
+    for idx, (col, cfg) in enumerate(SIGNALS.items()):
+        ax = fig.add_subplot(gs[idx // 2, idx % 2])
+        fc, lo, hi, rmse = holt_forecast(df_live[col].values)
+        ax.plot(df_live.index[-72:], df_live[col].iloc[-72:], color=cfg['color'], label='Observed')
+        ax.plot(future_idx, fc, color=cfg['color'], ls='--', label='Forecast')
+        ax.fill_between(future_idx, lo, hi, color=cfg['color'], alpha=0.15)
+        ax.set_title(f"{cfg['label']} (Now: {df_live[col].iloc[-1]:.1f})", color=cfg['color'])
+        ax.grid(True, alpha=0.2)
+        
+    clear_output(wait=True)
+    display(fig)
+    plt.close(fig)
