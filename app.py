@@ -721,65 +721,6 @@ elif not df_live.empty:
     df = df_live.copy()
 else:
     df = df_hist.copy()
-
-# --- 3. MULTI-VARIABLE CHARTING ---
-
-    # Add Humidity (Left Axis)
-    if 'timestamp' in df.columns and 'humidity' in df.columns:
-        fig.add_trace(
-            go.Scatter(x=df['timestamp'], y=df['humidity'], name="Humidity (%)", 
-                       line=dict(color='#ffa500', width=2)),
-            secondary_y=False,
-        )
-
-    # Add AQI (Right Axis) - This prevents AQI from squashing the Temp line
-    if 'timestamp' in df.columns and 'aqi' in df.columns:
-        fig.add_trace(
-            go.Scatter(x=df['timestamp'], y=df['aqi'], name="AQI (index)", 
-                       line=dict(color='#00d4ff', width=2)),
-            secondary_y=True,
-        )
-
-    # Add Forecasted points (Dotted lines) if they exist in your data
-    if 'AQI forecast (+30m)' in df.columns and 'timestamp' in df.columns:
-        fig.add_trace(
-            go.Scatter(x=df['timestamp'], y=df['AQI forecast (+30m)'], 
-                       name="AQI Forecast", line=dict(color='#00d4ff', dash='dot')),
-            secondary_y=True,
-        )
-# Style the layout for the Dark Theme
-    fig.update_layout(
-        template="plotly_dark",
-        title="Dasmariñas Environmental Trends",
-        hovermode="x unified",
-        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
-    )
-
-    # Set axis titles
-    fig.update_yaxes(title_text="Temperature (°C)", secondary_y=False)
-    fig.update_yaxes(title_text="AQI (MQ135)", secondary_y=True)
-    
-    # prediction confidence annotation (if available)
-    try:
-        if pred_conf is not None:
-            if pred_conf >= 0.8:
-                conf_bg = "#2ecc71"
-            elif pred_conf >= 0.6:
-                conf_bg = "#f1c40f"
-            else:
-                conf_bg = "#e74c3c"
-            fig.add_annotation(
-                text=f"Prediction confidence: {pred_conf:.0%}",
-                xref='paper', yref='paper', x=0.99, y=0.95,
-                showarrow=False, bgcolor=conf_bg, font=dict(color='black')
-            )
-    except Exception:
-        pass
-
-    st.plotly_chart(fig, width='stretch')
-else:
-    st.warning("Waiting for valid data to display the chart...")
-df_hist = df.copy()
 # -----------------------------
 # Data Loading & Cleaning
 # -----------------------------
