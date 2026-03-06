@@ -55,21 +55,48 @@ with st.sidebar:
         | >52°C | **Extreme Danger** | Heat stroke imminent |
         """)
 
-# The 'help' parameter adds the (?) icon automatically
-uploaded_file = st.file_uploader(
-    "Upload Sensor Log (CSV)", 
-    type=["csv"],
-    help="""
-    **Required CSV Format:**
-    1. **timestamp**: YYYY-MM-DD HH:MM
-    2. **tempC**: Temperature in Celsius
-    3. **humidity**: Humidity percentage (0-100)
-    4. **aqi**: Air Quality Index (optional)
-    5. **MQraw**: MQ135 sensor 
+
+import streamlit as st
+import pandas as pd
+
+# 1. Sidebar Section
+with st.sidebar:
+    st.header("📤 Data Management")
     
-    *Note: Heat Index will be calculated automatically upon upload.*
-    """
+    # 2. File Uploader with the (?) help icon
+    uploaded_file = st.file_uploader(
+        "Upload Sensor Log", 
+        type=["csv"],
+        help="""
+        **Expected CSV Structure:**
+        * **timestamp**: e.g., 2024-05-20 14:30
+        * **tempC**: Temperature in Celsius
+        * **humidity**: Humidity % (0-100)
+        * **mqRaw**: The raw sensor reading (e.g., 200-1024)
+        * **aqi**: Air Quality Index (Optional)
 )
+        *Note: The app will automatically calculate the Heat Index from your Temp and Humidity data.*
+        """
+    )
+
+    # 3. Visual Guidance for the User
+    if uploaded_file is None:
+        st.info("💡 **Tip:** Download the template below to ensure your data matches the dashboard format.")
+        
+        # Create a sample template for them to download
+        template_df = pd.DataFrame({
+            'timestamp': ['2024-05-21 08:00', '2024-05-21 08:05'],
+            'tempC': [30.5, 31.0],
+            'humidity': [70, 68],
+            'aqi': [45, 48]
+        })
+        
+        st.download_button(
+            label="📥 Download CSV Template",
+            data=template_df.to_csv(index=False),
+            file_name="sensor_template.csv",
+            mime="text/csv"
+        )
 
 
 def calculate_heat_index(temp_c, humidity):
@@ -172,8 +199,8 @@ signals = {
     "mqRaw":    {"label": "MQ Gas Raw",  "unit": "raw",     "color": "#ffd93d", "clip": (None, None)},
     "aqi":      {"label": "AQI",         "unit": "",        "color": "#6bcb77", "clip": (0, None)},
 }
-if "pm25" in raw.columns:
-    signals["pm25"] = {"label": "PM2.5", "unit": "µg/m³", "color": "#a175ff", "clip": (0, None)}
+if "MQ135" in raw.columns:
+    signals["MQ135"] = {"label": "MQ135", "unit": " ", "color": "#a175ff", "clip": (0, None)}
 
 
 # ---------- Category utilities ----------
@@ -555,8 +582,8 @@ if tab_choice == "Compare sites":
 
                 # Category badge for "current" based on selected scale
                 if cat_scale.startswith("DENR"):
-                    if "pm25" in proc.columns:
-                        current_val = float(proc["pm25"].iloc[-1])
+                    if "MQ135" in proc.columns:
+                        current_val = float(proc["MQ135"].iloc[-1])
                         cat, color = categorize_pm25_denr(current_val)
                         st.markdown(
                             f"Current PM2.5: **{current_val:.1f} µg/m³** — "
@@ -564,7 +591,7 @@ if tab_choice == "Compare sites":
                             unsafe_allow_html=True,
                         )
                     else:
-                        st.info("PM2.5 not available; using AQI categories.")
+                        st.info("MQ135 not available; using AQI categories.")
                         current_val = float(proc["aqi"].iloc[-1]) if "aqi" in proc.columns else np.nan
                         if np.isfinite(current_val):
                             cat, color = categorize_aqi(current_val)
