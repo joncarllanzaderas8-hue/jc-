@@ -58,25 +58,10 @@ with st.sidebar:
 
     
 # ---------- Sidebar controls ----------
-# --- 1. DEFINE DEFAULTS FIRST ---
-# This fixes the NameError
-default_path = os.path.join("sensor_log.csv") 
-
-# --- 2. SIDEBAR CONTROLS ---
 with st.sidebar:
     st.header("Controls")
-    uploaded = st.file_uploader(
-        "Upload sensor_log.csv", 
-        type=["csv"],
-        help="Required columns: Location, timestamp, tempC, humidity, mqRaw"
-    )
-    
-    # Guidance for the user
-    if not uploaded:
-        with st.expander("📝 CSV Format Guide"):
-            st.write("Ensure your CSV has these exact headers:")
-            st.code("Location,timestamp,tempC,humidity,mqRaw")
-
+    uploaded = st.file_uploader("Upload sensor_log.csv", type=["csv"])
+    default_path = os.path.join("sensor_log.csv")
    auto_tune = st.checkbox(
         "Auto‑tune α, β per signal",
         value=False,
