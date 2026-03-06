@@ -14,6 +14,25 @@ from preprocessing import preprocess_site, SITE_NAME  # retains your A/B/C defau
 from des import holt_forecast, tune_holt
 from aqi import categorize_aqi  # EPA AQI categorizer (index -> (label, color))
 
+with st.sidebar:
+    st.divider()
+    with st.expander("❓ How to read this Dashboard"):
+        st.markdown("""
+        ### Sensor Guide
+        * **Temp (°C):** Actual air temperature.
+        * **Humidity (%):** Amount of moisture in the air.
+        * **Heat Index:** The 'Real Feel' temperature (Calculated).
+        * **AQI:** Air Quality Index (Lower is better).
+
+        ### Heat Index Labels
+        | Range | Label | Precaution |
+        | :--- | :--- | :--- |
+        | 27-32°C | **Caution** | Fatigue possible |
+        | 33-41°C | **Extreme Caution** | Heat cramps likely |
+        | 42-51°C | **DANGER** | Heat stroke probable |
+        | >52°C | **Extreme Danger** | Heat stroke imminent |
+        """)
+        
 def calculate_heat_index(temp_c, humidity):
     T = (temp_c * 9/5) + 32
     RH = humidity
