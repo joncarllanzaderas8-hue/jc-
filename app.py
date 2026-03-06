@@ -58,30 +58,26 @@ with st.sidebar:
 
     
 # ---------- Sidebar controls ----------
+# --- 1. DEFINE DEFAULTS FIRST ---
+# This fixes the NameError
+default_path = os.path.join("sensor_log.csv") 
+
+# --- 2. SIDEBAR CONTROLS ---
 with st.sidebar:
     st.header("Controls")
-    
-    # 1. File Uploader with the (?) help icon
     uploaded = st.file_uploader(
         "Upload sensor_log.csv", 
         type=["csv"],
-        help="""
-        **CSV Requirements:**
-        * **Location**: Site name (e.g., Residential, SM Dasma)
-        * **timestamp**: YYYY-MM-DD HH:MM format
-        * **tempC**: Temperature in Celsius
-        * **humidity**: Humidity % (0-100)
-        * **mqRaw**: Gas sensor raw value
-        """
+        help="Required columns: Location, timestamp, tempC, humidity, mqRaw"
     )
-
-    # 2. Visual Guidance Box (Shown only when no file is uploaded)
+    
+    # Guidance for the user
     if not uploaded:
-        with st.expander("📝 CSV Format Guide", expanded=False):
+        with st.expander("📝 CSV Format Guide"):
             st.write("Ensure your CSV has these exact headers:")
             st.code("Location,timestamp,tempC,humidity,mqRaw")
-            st.caption("Note: Heat Index is calculated automatically.")
-    auto_tune = st.checkbox(
+
+   auto_tune = st.checkbox(
         "Auto‑tune α, β per signal",
         value=False,
         help="Grid search per site & per signal to minimize RMSE",
