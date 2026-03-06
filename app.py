@@ -732,14 +732,7 @@ HI_BAND_SHAPES = [
 ]
 
 # Pre-compute Heat Index for history
-if set(['tempC','humidity']).issubset(df_hist.columns):
-    df_hist['heat_index_C'] = heat_index_celsius(df_hist['tempC'].values, df_hist['humidity'].values)
-    df_hist['HI_Category'] = df_hist['heat_index_C'].apply(pagasa_hi_category)
-else:
-    df_hist['heat_index_C'] = np.nan
-    df_hist['HI_Category'] = "—"
-
-if 'aqi' in df_hist.columns:
-    df_hist['AQI_Category'] = df_hist['aqi'].apply(epa_aqi_category)
-else:
-    df_hist['AQI_Category'] = "—"
+# Pre-compute Heat Index for history                                    
+if "tempC" in proc.columns and "humidity" in proc.columns:
+    # Use the function names you defined (calculate_heat_index)
+    proc["heat_index"] = proc.apply(lambda r: calculate_heat_index(r["tempC"], r["humidity"]), axis=1)
