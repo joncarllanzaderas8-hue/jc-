@@ -1,6 +1,8 @@
 import os
 import io
 import json
+import smtplib
+import requests
 import numpy as np
 import pandas as pd
 import streamlit as st
@@ -8,194 +10,728 @@ import plotly.graph_objects as go
 import plotly.express as px
 import pydeck as pdk
 
-from preprocessing import preprocess_site, SITE_NAME
+from preprocessing import preprocess_site, SITE_NAME  # retains your A/B/C defaults
 from des import holt_forecast, tune_holt
-from aqi import categorize_aqi 
+from aqi import categorize_aqi  # EPA AQI categorizer (index -> (label, color))
 
-# ---------- Calculation Helpers ----------
+
+# ---------- Page config ----------
+st.set_page_config(page_title="Barangay Microclimate Forecast", layout="wide")
+st.title("Barangay Microclimate Monitoring — 4‑Hour Forecasts")
+st.caption("Holt's Double Exponential Smoothing (DES) — 5‑minute resolution, 90% confidence bands")
 
 def calculate_heat_index(temp_c, humidity):
-    """NOAA/NWS Heat Index Equation (Celsius)"""
     T = (temp_c * 9/5) + 32
     RH = humidity
-    # Simple formula for low temps
     hi = 0.5 * (T + 61.0 + ((T - 68.0) * 1.2) + (RH * 0.094))
-    
-    # Rothfusz Regression for higher temps
     if hi > 80:
         hi = -42.379 + 2.04901523*T + 10.14333127*RH - 0.22475541*T*RH \
              - 6.83783e-3*T*T - 5.481717e-2*RH*RH + 1.22874e-3*T*T*RH \
              + 8.5282e-4*T*RH*RH - 1.99e-6*T*T*RH*RH
-        
-        # Adjustments
-        if RH < 13 and 80 <= T <= 112:
-            hi -= ((13-RH)/4) * np.sqrt((17-np.abs(T-95))/17)
-        elif RH > 85 and 80 <= T <= 87:
-            hi += ((RH-85)/10) * ((87-T)/5)
-            
     return (hi - 32) * 5/9
 
 def get_pagasa_hi_category(hi_c):
-    """PAGASA Heat Index Categories"""
+    if hi_c < 27: return "Not Hazardous", "#00e400"
+    if hi_c <= 32: return "Caution", "#ffff00"
+    if hi_c <= 41: return "Extreme Caution", "#ff7e00"
+    if hi_c <= 51: return "Danger", "#ff0000"
+    return "Extreme Danger", "#7e0023"
+    
+# ---------- Sidebar controls ----------
+with st.sidebar:
+    st.header("Controls")
+    uploaded = st.file_uploader("Upload sensor_log.csv", type=["csv"])
+    default_path = os.path.join("sensor_log.csv")
+
+    auto_tune = st.checkbox(
+        "Auto‑tune α, β per signal",
+        value=False,
+        help="Grid search per site & per signal to minimize RMSE",
+    )
+    alpha = st.slider("Alpha (level)", 0.05, 0.9, 0.30, 0.05, disabled=auto_tune)
+    beta = st.slider("Beta (trend)", 0.05, 0.9, 0.15, 0.05, disabled=auto_tune)
+
+    history_hours = st.slider("History window (hours)", 3, 24, 6, 1)
+    steps = st.select_slider(
+        "Forecast horizon",
+        options=[12, 24, 36, 48],
+        value=48,
+        help="steps × 5 min (48 = 4 hours)",
+    )
+
+    cat_scale = st.selectbox(
+        "Category scale",
+        ["EPA AQI (uses AQI value)", "DENR PM2.5 (uses PM2.5 concentration)"],
+        index=0,
+        help="EPA uses the AQI value (0–500); DENR uses PM2.5 μg/m³ (DAO 2020‑14).",
+    )
+
+    tab_choice = st.radio("View", ["Single site", "Compare sites", "City map"], index=0)
+    show_residuals = st.checkbox("Show residuals panel (deep‑dive)", value=True)
+
+
+# ---------- Data loading ----------
+@st.cache_data(show_spinner=False)
+def load_data(file_bytes: bytes | None, fallback_path: str) -> pd.DataFrame:
+    if file_bytes is not None:
+        df = pd.read_csv(io.BytesIO(file_bytes))
+    else:
+        if not os.path.exists(fallback_path):
+            st.error(f"CSV not found at {fallback_path}. Upload a file or place it under data/ as sensor_log.csv.")
+            st.stop()
+        df = pd.read_csv(fallback_path)
+
+    if "timestamp" not in df.columns:
+        st.error("Missing 'timestamp' column in CSV.")
+        st.stop()
+
+    df["timestamp"] = pd.to_datetime(df["timestamp"])
+    return df
+
+
+raw = load_data(uploaded.getvalue() if uploaded else None, default_path)
+
+
+# ---------- Auto-detect sites & dynamic labels ----------
+@st.cache_data(show_spinner=False)
+def detect_sites_and_labels(df: pd.DataFrame) -> tuple[list[str], dict, dict]:
+    """
+    Returns (site_codes, code->label, label->code).
+    Uses existing SITE_NAME for known codes; for others, creates 'Site <code>'.
+    """
+    codes = list(pd.Series(df["Location"].dropna().unique()).astype(str))
+    code_to_label = {}
+    for code in codes:
+        if code in SITE_NAME:
+            code_to_label[code] = SITE_NAME[code]
+        else:
+            code_to_label[code] = f"Site {code}"
+    label_to_code = {v: k for k, v in code_to_label.items()}
+    return codes, code_to_label, label_to_code
+
+
+site_codes, CODE2LABEL, LABEL2CODE = detect_sites_and_labels(raw)
+
+
+# ---------- Signals & helpers ----------
+signals = {
+    "tempC":    {"label": "Temperature", "unit": "°C",      "color": "#ff6b6b", "clip": (None, None)},
+    "humidity": {"label": "Humidity",    "unit": "%",       "color": "#4ecdc4", "clip": (0, 100)},
+    "heat_index": {"label": "Heat Index", "unit": "°C",     "color": "#ff8c00", "clip": (None, None)}, # <--- Add this
+    "mqRaw":    {"label": "MQ Gas Raw",  "unit": "raw",     "color": "#ffd93d", "clip": (None, None)},
+    "aqi":      {"label": "AQI",         "unit": "",        "color": "#6bcb77", "clip": (0, None)},
+}
+if "pm25" in raw.columns:
+    signals["pm25"] = {"label": "PM2.5", "unit": "µg/m³", "color": "#a175ff", "clip": (0, None)}
+
+
+# ---------- Category utilities ----------
+def calculate_heat_index(temp_c, humidity):
+    T = (temp_c * 9/5) + 32
+    RH = humidity
+    hi = 0.5 * (T + 61.0 + ((T - 68.0) * 1.2) + (RH * 0.094))
+    if hi > 80:
+        hi = -42.379 + 2.04901523*T + 10.14333127*RH - 0.22475541*T*RH \
+             - 6.83783e-3*T*T - 5.481717e-2*RH*RH + 1.22874e-3*T*T*RH \
+             + 8.5282e-4*T*RH*RH - 1.99e-6*T*T*RH*RH
+    return (hi - 32) * 5/9
+
+def get_pagasa_hi_category(hi_c):
     if hi_c < 27: return "Not Hazardous", "#00e400"
     if hi_c <= 32: return "Caution", "#ffff00"
     if hi_c <= 41: return "Extreme Caution", "#ff7e00"
     if hi_c <= 51: return "Danger", "#ff0000"
     return "Extreme Danger", "#7e0023"
 
-def categorize_pm25_denr(pm25_value):
-    v = float(pm25_value)
-    if v <= 25.0: return "Good", "#00e400"
-    if v <= 35.0: return "Fair", "#ffff00"
-    if v <= 45.0: return "USG", "#ff7e00"
-    if v <= 55.0: return "Very Unhealthy", "#ff0000"
-    if v <= 90.0: return "Acutely Unhealthy", "#8f3f97"
-    return "Emergency", "#7e0023"
+def categorize_pm25_denr(pm25_value: float) -> tuple[str, str]:
+    """
+    DENR DAO 2020-14 PM2.5 breakpoints (µg/m³):
+      Good (0–25), Fair (25.1–35), USG (35.1–45), Very Unhealthy (45.1–55),
+      Acutely Unhealthy (55.1–90), Emergency (> 91)
+    Color palette chosen to roughly align with intuitive traffic-light + extended bands.
+    """
+    try:
+        v = float(pm25_value)
+    except Exception:
+        return ("Unknown", "#888888")
 
-def hex_to_rgb_tuple(hex_color):
+    if v <= 25.0:
+        return ("Good", "#00e400")               # green
+    if v <= 35.0:
+        return ("Fair", "#ffff00")               # yellow
+    if v <= 45.0:
+        return ("USG", "#ff7e00")                # orange
+    if v <= 55.0:
+        return ("Very Unhealthy", "#ff0000")     # red
+    if v <= 90.0:
+        return ("Acutely Unhealthy", "#8f3f97")  # purple-ish
+    return ("Emergency", "#7e0023")              # maroon
+
+def process_site(df: pd.DataFrame, site_code: str, steps: int,
+                 alpha: float | None, beta: float | None, auto_tune: bool):
+    # ... existing code ...
+    proc = preprocess_site(site_df)
+
+    # --- ADD THIS LINE HERE ---
+    if "tempC" in proc.columns and "humidity" in proc.columns:
+        proc["heat_index"] = proc.apply(lambda r: calculate_heat_index(r["tempC"], r["humidity"]), axis=1)
+    # ---------------------------
+
+    if proc.empty:
+        return None
+    # ... rest of function ...
+
+def label_categories_vector(values: np.ndarray, scale: str) -> list[str]:
+    """
+    Return list of category labels for a numeric array:
+      - "EPA AQI..." scale expects AQI values
+      - "DENR PM2.5..." scale expects PM2.5 concentrations
+    """
+    labels = []
+    for v in values:
+        if scale.startswith("EPA"):
+            cat, _ = categorize_aqi(float(v))
+        else:
+            cat, _ = categorize_pm25_denr(float(v))
+        labels.append(cat)
+    return labels
+
+
+def hex_to_rgb_tuple(hex_color: str) -> tuple[int, int, int]:
     h = hex_color.lstrip("#")
     return tuple(int(h[i : i + 2], 16) for i in (0, 2, 4))
 
-# ---------- Page Config & Signals ----------
-st.set_page_config(page_title="Barangay Microclimate Forecast", layout="wide")
 
-signals = {
-    "tempC":      {"label": "Temperature", "unit": "°C",      "color": "#ff6b6b", "clip": (None, None)},
-    "humidity":   {"label": "Humidity",    "unit": "%",       "color": "#4ecdc4", "clip": (0, 100)},
-    "heat_index": {"label": "Heat Index",  "unit": "°C",      "color": "#ff8c00", "clip": (None, None)},
-    "aqi":        {"label": "AQI",         "unit": "",        "color": "#6bcb77", "clip": (0, None)},
-}
-
-# ---------- Core Logic ----------
-
+# ---------- Site processing ----------
 @st.cache_data(show_spinner=False)
-def process_site_data(df, site_code, steps, alpha, beta, auto_tune):
+def process_site(df: pd.DataFrame, site_code: str, steps: int,
+                 alpha: float | None, beta: float | None, auto_tune: bool):
     site_df = df[df["Location"] == site_code].copy()
-    if site_df.empty: return None
+    if site_df.empty:
+        return None
 
     proc = preprocess_site(site_df)
-    
-    # Inject Heat Index calculation into preprocessed data
-    if "tempC" in proc.columns and "humidity" in proc.columns:
-        proc["heat_index"] = proc.apply(lambda r: calculate_heat_index(r["tempC"], r["humidity"]), axis=1)
+    if proc.empty:
+        return None
 
     last_ts = proc.index[-1]
     future_idx = pd.date_range(last_ts + pd.Timedelta("5min"), periods=steps, freq="5min")
-    results, chosen = {}, {}
 
-    for col in signals.keys():
-        if col not in proc.columns: continue
-        series = proc[col].values
-        
+    results = {}
+    chosen = {}
+
+    for col, meta in signals.items():
+        series = proc[col].values if col in proc.columns else None
+        if series is None or len(series) == 0:
+            continue
+
         if auto_tune:
             best = tune_holt(series, steps=steps)
-            a, b, res = best["alpha"], best["beta"], best["model"]
+            a, b = best["alpha"], best["beta"]
+            res = best["model"]
         else:
             a, b = alpha, beta
             res = holt_forecast(series, alpha=a, beta=b, steps=steps)
 
-        # Clipping
-        lo_clip, hi_clip = signals[col]["clip"]
-        res["forecast"] = np.clip(res["forecast"], lo_clip, hi_clip)
-        res["lower"] = np.clip(res["lower"], lo_clip, hi_clip)
-        res["upper"] = np.clip(res["upper"], lo_clip, hi_clip)
+        lo_clip, hi_clip = meta["clip"]
+        if lo_clip is not None:
+            res["forecast"] = np.maximum(res["forecast"], lo_clip)
+            res["lower"] = np.maximum(res["lower"], lo_clip)
+        if hi_clip is not None:
+            res["forecast"] = np.minimum(res["forecast"], hi_clip)
+            res["upper"] = np.minimum(res["upper"], hi_clip)
 
         results[col] = res
         chosen[col] = {"alpha": a, "beta": b, "rmse": float(res["rmse"])}
 
-    return {"proc": proc, "last_ts": last_ts, "future_idx": future_idx, "results": results, "chosen": chosen}
+    return {
+        "proc": proc,
+        "last_ts": last_ts,
+        "future_idx": future_idx,
+        "results": results,
+        "chosen": chosen,
+    }
 
-# ---------- Sidebar ----------
-with st.sidebar:
-    st.header("Controls")
-    uploaded = st.file_uploader("Upload sensor_log.csv", type=["csv"])
-    cat_scale = st.selectbox("Map Color Scale", ["EPA AQI", "DENR PM2.5", "PAGASA Heat Index"])
-    auto_tune = st.checkbox("Auto-tune per signal", value=True)
-    alpha = st.slider("Manual Alpha", 0.05, 0.9, 0.3)
-    beta = st.slider("Manual Beta", 0.05, 0.9, 0.15)
-    steps = st.select_slider("Forecast Hours", options=[12, 24, 36, 48], value=48)
-    tab_choice = st.radio("View", ["Single site", "City map"])
 
-# ---------- Data Loading ----------
-default_path = "sensor_log.csv"
-if uploaded:
-    raw = pd.read_csv(uploaded)
-else:
-    if os.path.exists(default_path):
-        raw = pd.read_csv(default_path)
-    else:
-        st.warning("Please upload a CSV file.")
-        st.stop()
-raw["timestamp"] = pd.to_datetime(raw["timestamp"])
-site_codes = raw["Location"].unique()
+# ---------- Helper: choose numeric series for selected category scale ----------
+def pick_category_series(bundle: dict, scale: str) -> tuple[np.ndarray, pd.DatetimeIndex, str]:
+    """
+    Returns (forecast_values, future_index, source_name)
+      - EPA AQI scale -> use bundle['results']['aqi'] forecast
+      - DENR PM2.5 scale -> use bundle['results']['pm25'] forecast if present; else fallback to AQI
+    """
+    if scale.startswith("DENR"):
+        res_pm = bundle["results"].get("pm25")
+        if res_pm is not None and len(res_pm["forecast"]) > 0:
+            return res_pm["forecast"], bundle["future_idx"], "pm25"
+        # fallback
+    res_aqi = bundle["results"].get("aqi")
+    if res_aqi is None:
+        return np.array([]), bundle["future_idx"], "none"
+    return res_aqi["forecast"], bundle["future_idx"], "aqi"
 
-# ---------- Main View ----------
 
+def first_crossing_index(series: np.ndarray, threshold: float) -> int | None:
+    mask = series > threshold
+    return int(np.argmax(mask)) if mask.any() else None
+
+
+# =====================================================================================
+# Single site
+# =====================================================================================
 if tab_choice == "Single site":
-    site_code = st.selectbox("Select Barangay", site_codes, format_func=lambda x: SITE_NAME.get(x, x))
-    bundle = process_site_data(raw, site_code, steps, alpha, beta, auto_tune)
-    
-    if bundle:
-        tabs = st.tabs([meta["label"] for meta in signals.values()])
-        for tab, (col, meta) in zip(tabs, signals.items()):
-            with tab:
-                if col in bundle["results"]:
-                    res = bundle["results"][col]
-                    fig = go.Figure()
-                    # History
-                    fig.add_trace(go.Scatter(x=bundle["proc"].index, y=bundle["proc"][col], name="Observed", line=dict(color=meta["color"])))
-                    # Forecast
-                    fig.add_trace(go.Scatter(x=bundle["future_idx"], y=res["forecast"], name="Forecast", line=dict(color=meta["color"], dash="dash")))
-                    fig.update_layout(template="plotly_dark", title=f"{meta['label']} Trend")
-                    st.plotly_chart(fig, use_container_width=True)
+    site_choice = st.selectbox("Site", options=[CODE2LABEL[c] for c in site_codes])
+    site_code = LABEL2CODE[site_choice]
 
-elif tab_choice == "City map":
-    st.subheader(f"Dasmariñas Status: {cat_scale}")
-    
-    # Prep map data
-    map_data = []
+    bundle = process_site(raw, site_code, steps, alpha, beta, auto_tune)
+    if bundle is None:
+        st.error("No rows found for the selected site.")
+        st.stop()
+
+    proc = bundle["proc"]
+    last_ts = bundle["last_ts"]
+    future_idx = bundle["future_idx"]
+    results_site = bundle["results"]
+    chosen = bundle["chosen"]
+
+    st.caption("Smoothing parameters (by signal):")
+    st.json(
+        {
+            k: {
+                "alpha": round(v["alpha"], 3) if v["alpha"] is not None else None,
+                "beta": round(v["beta"], 3) if v["beta"] is not None else None,
+                "rmse": round(v["rmse"], 3) if np.isfinite(v["rmse"]) else None,
+            }
+            for k, v in chosen.items()
+        },
+        expanded=False,
+    )
+
+    tabs = st.tabs([f"{meta['label']}" for meta in signals.values()])
+
+    for tab, (col, meta) in zip(tabs, signals.items()):
+        with tab:
+            if col not in proc.columns or col not in results_site:
+                st.warning(f"No data for {meta['label']} at {site_choice}.")
+                continue
+
+            st.subheader(f"{site_choice} — {meta['label']}")
+            hist = proc.iloc[-12 * history_hours:]  # 12 points per hour at 5-min
+
+            # Plot (history + forecast + CI)
+            fig = go.Figure()
+            fig.add_trace(
+                go.Scatter(
+                    x=hist.index,
+                    y=hist[col],
+                    mode="lines",
+                    name="Observed",
+                    line=dict(color=meta["color"], width=2),
+                )
+            )
+            fig.add_trace(
+                go.Scatter(
+                    x=future_idx,
+                    y=results_site[col]["forecast"],
+                    mode="lines",
+                    name="Forecast",
+                    line=dict(color=meta["color"], width=2, dash="dash"),
+                )
+            )
+            fig.add_trace(
+                go.Scatter(
+                    x=future_idx,
+                    y=results_site[col]["upper"],
+                    mode="lines",
+                    line=dict(width=0),
+                    showlegend=False,
+                )
+            )
+            fig.add_trace(
+                go.Scatter(
+                    x=future_idx,
+                    y=results_site[col]["lower"],
+                    mode="lines",
+                    fill="tonexty",
+                    fillcolor="rgba(160,160,160,0.2)",
+                    line=dict(width=0),
+                    name="90% CI",
+                )
+            )
+            fig.add_vline(x=last_ts, line_width=1, line_dash="dot", line_color="white")
+            fig.update_layout(height=420, template="plotly_dark", margin=dict(l=20, r=20, t=30, b=10))
+            st.plotly_chart(fig, use_container_width=True)
+
+            # KPIs
+            last_val = hist[col].iloc[-1]
+            fc = results_site[col]["forecast"]
+            fc1 = fc[11] if len(fc) >= 12 else np.nan
+            fc2 = fc[23] if len(fc) >= 24 else np.nan
+            fc4 = fc[-1] if len(fc) > 0 else np.nan
+            rmse = results_site[col]["rmse"]
+
+            c1, c2, c3, c4 = st.columns(4)
+            c1.metric("Last observed", f"{last_val:.2f} {meta['unit']}")
+            c2.metric("+1 hour", f"{fc1:.2f} {meta['unit']}" if np.isfinite(fc1) else "—")
+            c3.metric("+2 hours", f"{fc2:.2f} {meta['unit']}" if np.isfinite(fc2) else "—")
+            c4.metric("+4 hours", f"{fc4:.2f} {meta['unit']}" if np.isfinite(fc4) else "—")
+            st.caption(f"In‑sample RMSE: {rmse:.3f} {meta['unit']}")
+
+            # Residuals
+            if show_residuals:
+                st.markdown("**Residuals (Observed − Fitted One‑Step Ahead)**")
+                fitted = results_site[col]["fitted"]
+                fitted_idx = proc.index[: len(fitted)]
+                resid = proc[col].iloc[: len(fitted)] - pd.Series(fitted, index=fitted_idx)
+                fig_r = px.bar(
+                    x=resid.index,
+                    y=resid.values,
+                    labels={"x": "Time", "y": "Residual"},
+                    height=200,
+                    template="plotly_dark",
+                )
+                st.plotly_chart(fig_r, use_container_width=True)
+
+    # ---------- Category labels & first crossing (based on selected scale) ----------
+    st.markdown("---")
+    st.subheader("Categories in the forecast (based on selected scale)")
+
+    fc_vals, fc_index, source_name = pick_category_series(bundle, cat_scale)
+    if source_name == "none" or len(fc_vals) == 0:
+        st.info("No forecast series available for the selected scale. (Tip: EPA uses AQI; DENR uses PM2.5.)")
+    else:
+        # Default threshold depends on scale: EPA USG=100; DENR USG~35
+        default_thr = 100 if cat_scale.startswith("EPA") else 35
+        thr = st.number_input(
+            f"Compute first crossing time for threshold {'AQI' if source_name=='aqi' else 'PM2.5'} >",
+            min_value=0.0, max_value=500.0, value=float(default_thr), step=1.0
+        )
+        idx = first_crossing_index(fc_vals, thr)
+        if idx is None:
+            st.info("No crossing in the next 4h.")
+        else:
+            t_cross = fc_index[idx]
+            st.success(
+                f"First crossing at **{t_cross:%Y-%m-%d %H:%M}** "
+                f"({('AQI' if source_name=='aqi' else 'PM2.5')} ~ {fc_vals[idx]:.1f})"
+            )
+
+    # ---------- Export CSV with per-step category (for selected scale) ----------
+    st.markdown("---")
+    st.subheader("Export forecast (with categories)")
+
+    export_rows = []
+    for col, meta in signals.items():
+        res = results_site.get(col)
+        if res is None:
+            continue
+
+        # compute category per step using selected scale's numeric series
+        if cat_scale.startswith("DENR") and source_name == "pm25" and col == "pm25":
+            cat_list = label_categories_vector(res["forecast"], cat_scale)
+        elif cat_scale.startswith("EPA") and col == "aqi":
+            cat_list = label_categories_vector(res["forecast"], cat_scale)
+        elif col == "heat_index":
+            cat_list = [get_pagasa_hi_category(v)[0] for v in res["forecast"]]
+        else:
+            # not the "category-driving" series; leave blank
+            cat_list = [""] * len(res["forecast"])
+            
+        for i, ts in enumerate(future_idx):
+            export_rows.append(
+                {
+                    "site_label": site_choice,
+                    "location_code": site_code,
+                    "timestamp": ts,
+                    "signal": col,
+                    "forecast": round(res["forecast"][i], 3),
+                    "lower_90ci": round(res["lower"][i], 3),
+                    "upper_90ci": round(res["upper"][i], 3),
+                    "category_scale": "DENR PM2.5" if cat_scale.startswith("DENR") else "EPA AQI",
+                    "category": cat_list[i],
+                    "rmse_in_sample": round(res["rmse"], 3),
+                }
+            )
+
+    exp_df = pd.DataFrame(export_rows)
+    st.download_button(
+        "⬇️ Download this site's 4‑hour forecast (CSV)",
+        data=exp_df.to_csv(index=False).encode("utf-8"),
+        file_name=f"forecast_{site_code}.csv",
+        mime="text/csv",
+    )
+
+
+# =====================================================================================
+# Compare sites (auto-detected)
+# =====================================================================================
+if tab_choice == "Compare sites":
+    st.subheader("Multi‑site comparison (side‑by‑side)")
+    signal_choice = st.selectbox("Signal", list(signals.keys()), format_func=lambda k: signals[k]["label"])
+
+    # Build bundles for all detected sites
+    site_bundles = {}
     for code in site_codes:
-        b = process_site_data(raw, code, steps, alpha, beta, auto_tune)
-        if b:
-            last_row = b["proc"].iloc[-1]
-            
-            # Determine color and category based on selection
-            if cat_scale == "PAGASA Heat Index" and "heat_index" in last_row:
-                val = last_row["heat_index"]
-                label, color = get_pagasa_hi_category(val)
-            elif cat_scale == "DENR PM2.5" and "pm25" in last_row:
-                val = last_row["pm25"]
-                label, color = categorize_pm25_denr(val)
-            else: # Default EPA AQI
-                val = last_row.get("aqi", 0)
-                label, color = categorize_aqi(val)
-            
-            rgb = hex_to_rgb_tuple(color)
-            map_data.append({
-                "location": code,
-                "name": SITE_NAME.get(code, code),
-                "value": round(val, 1),
-                "category": label,
-                "color": [*rgb, 200] # RGBA
-            })
+        site_bundles[code] = process_site(raw, code, steps, alpha, beta, auto_tune)
 
-    # Assuming you have a CSV with lat/lon for these codes
-    # For demo, let's assume we map 'map_data' to coordinates
-    pts_path = "barangays_dasmarinas.csv"
-    if os.path.exists(pts_path):
-        coords = pd.read_csv(pts_path)
-        df_map = pd.DataFrame(map_data).merge(coords, left_on="location", right_on="location_code")
-        
+    cols = st.columns(3 if len(site_codes) >= 3 else max(1, len(site_codes)))
+    # Render in pages of 3 columns if many sites
+    per_row = len(cols)
+
+    for start in range(0, len(site_codes), per_row):
+        row_codes = site_codes[start : start + per_row]
+        row_cols = st.columns(len(row_codes))
+        for i, code in enumerate(row_codes):
+            bundle = site_bundles.get(code)
+            label = CODE2LABEL.get(code, f"Site {code}")
+            with row_cols[i]:
+                st.markdown(f"**{label}**")
+                if bundle is None:
+                    st.warning(f"No data for {label}")
+                    continue
+
+                proc = bundle["proc"]
+                last_ts = bundle["last_ts"]
+                future_idx = bundle["future_idx"]
+                res = bundle["results"].get(signal_choice)
+                if res is None or signal_choice not in proc.columns:
+                    st.warning(f"No {signals[signal_choice]['label']} series for {label}.")
+                    continue
+
+                hist = proc.iloc[-12 * history_hours:]  # last N hours
+
+                # Category badge for "current" based on selected scale
+                if cat_scale.startswith("DENR"):
+                    if "pm25" in proc.columns:
+                        current_val = float(proc["pm25"].iloc[-1])
+                        cat, color = categorize_pm25_denr(current_val)
+                        st.markdown(
+                            f"Current PM2.5: **{current_val:.1f} µg/m³** — "
+                            f"<span style='color:{color}'>{cat}</span>",
+                            unsafe_allow_html=True,
+                        )
+                    else:
+                        st.info("PM2.5 not available; using AQI categories.")
+                        current_val = float(proc["aqi"].iloc[-1]) if "aqi" in proc.columns else np.nan
+                        if np.isfinite(current_val):
+                            cat, color = categorize_aqi(current_val)
+                            st.markdown(
+                                f"Current AQI: **{current_val:.1f}** — "
+                                f"<span style='color:{color}'>{cat}</span>",
+                                unsafe_allow_html=True,
+                            )
+                else:
+                    current_val = float(proc["aqi"].iloc[-1]) if "aqi" in proc.columns else np.nan
+                    if np.isfinite(current_val):
+                        cat, color = categorize_aqi(current_val)
+                        st.markdown(
+                            f"Current AQI: **{current_val:.1f}** — "
+                            f"<span style='color:{color}'>{cat}</span>",
+                            unsafe_allow_html=True,
+                        )
+
+                # Figure
+                fig = go.Figure()
+                fig.add_trace(go.Scatter(x=hist.index, y=hist[signal_choice], mode="lines", name="Observed"))
+                fig.add_trace(go.Scatter(x=future_idx, y=res["forecast"], mode="lines", name="Forecast",
+                                         line=dict(dash="dash")))
+                fig.add_trace(go.Scatter(x=future_idx, y=res["upper"], mode="lines", line=dict(width=0),
+                                         showlegend=False))
+                fig.add_trace(go.Scatter(x=future_idx, y=res["lower"], mode="lines", fill="tonexty",
+                                         fillcolor="rgba(160,160,160,0.2)", line=dict(width=0), name="90% CI"))
+                fig.add_vline(x=last_ts, line_width=1, line_dash="dot", line_color="white")
+                fig.update_layout(height=360, template="plotly_dark", margin=dict(l=10, r=10, t=20, b=10))
+                st.plotly_chart(fig, use_container_width=True)
+
+
+# =====================================================================================
+# City map (Dasmariñas): color each barangay by selected category scale
+# =====================================================================================
+if tab_choice == "City map":
+    st.subheader("Dasmariñas barangay map — category coloring")
+
+    # Build a 'current status' per site using selected category scale
+    latest_by_site = {}
+    for code in site_codes:
+        b = process_site(raw, code, steps, alpha, beta, auto_tune)
+        if b is None:
+            continue
+        proc = b["proc"]
+        if cat_scale.startswith("DENR") and "pm25" in proc.columns:
+            val = float(proc["pm25"].iloc[-1])
+            cat, color = categorize_pm25_denr(val)
+        else:
+            if "aqi" not in proc.columns:
+                continue
+            val = float(proc["aqi"].iloc[-1])
+            cat, color = categorize_aqi(val)
+        latest_by_site[code] = {"label": CODE2LABEL[code], "value": val, "cat": cat, "color": color}
+
+    # Files (optional)
+    gj_path = os.path.join("dasmarinas_barangays.geojson")      # GeoJSON polygons
+    bind_path = os.path.join("site_binding.csv")                # polygon_name,location_code
+    pts_path = os.path.join("barangays_dasmarinas.csv")         # name,lat,lon,location_code
+
+    def attach_color_to_feature(feat, latest_dict):
+        name = feat.get("properties", {}).get("name") or feat.get("properties", {}).get("NAME")
+        code = name_to_code.get(name)
+        if code and code in latest_dict:
+            cat = latest_dict[code]["cat"]
+            color_hex = latest_dict[code]["color"]
+            feat["properties"]["aqi_cat"] = cat
+            feat["properties"]["color_hex"] = color_hex
+        else:
+            feat["properties"]["aqi_cat"] = "Unknown"
+            feat["properties"]["color_hex"] = "#888888"
+
+    def gj_color_getter(f):
+        hx = f["properties"]["color_hex"]
+        r, g, b = hex_to_rgb_tuple(hx)
+        return [r, g, b, 160]
+
+    if os.path.exists(gj_path) and os.path.exists(bind_path):
+        st.caption("Using GeoJSON polygons + site binding")
+        with open(gj_path, "r", encoding="utf-8") as f:
+            geojson = json.load(f)
+        bind_df = pd.read_csv(bind_path)  # columns: polygon_name, location_code
+        name_to_code = dict(zip(bind_df["polygon_name"], bind_df["location_code"]))
+
+        for feat in geojson.get("features", []):
+            attach_color_to_feature(feat, latest_by_site)
+
         layer = pdk.Layer(
-            "ScatterplotLayer",
-            df_map,
-            get_position=["lon", "lat"],
-            get_fill_color="color",
-            get_radius=200,
+            "GeoJsonLayer",
+            geojson,
+            stroked=True,
+            filled=True,
+            get_fill_color=gj_color_getter,
+            get_line_color=[255, 255, 255],
+            lineWidthMinPixels=1,
             pickable=True,
         )
-        st.pydeck_chart(pdk.Deck(
-            layers=[layer],
-            initial_view_state=pdk.ViewState(latitude=14.329, longitude=120.936, zoom=12),
-            tooltip={"text": "{name}\nValue: {value}\nStatus: {category}"}
-        ))
+        view_state = pdk.ViewState(latitude=14.329, longitude=120.936, zoom=12)
+        deck = pdk.Deck(layers=[layer], initial_view_state=view_state, tooltip={"text": "{name}\n{aqi_cat}"})
+        st.pydeck_chart(deck, use_container_width=True)
+
+    elif os.path.exists(pts_path):
+        st.caption("Using barangay point markers (lat/lon)")
+        pts = pd.read_csv(pts_path)  # name,lat,lon,location_code
+
+        def map_cat(row):
+            code = str(row["location_code"])
+            return latest_by_site.get(code, {}).get("cat", "Unknown")
+
+        def map_color(row):
+            code = str(row["location_code"])
+            return latest_by_site.get(code, {}).get("color", "#888888")
+
+        pts["aqi_cat"] = pts.apply(map_cat, axis=1)
+        pts["color_hex"] = pts.apply(map_color, axis=1)
+        pts["r"] = pts["color_hex"].apply(lambda h: hex_to_rgb_tuple(h)[0])
+        pts["g"] = pts["color_hex"].apply(lambda h: hex_to_rgb_tuple(h)[1])
+        pts["b"] = pts["color_hex"].apply(lambda h: hex_to_rgb_tuple(h)[2])
+
+        layer = pdk.Layer(
+            "ScatterplotLayer",
+            data=pts,
+            get_position=["lon", "lat"],
+            get_radius=120,
+            get_fill_color=["r", "g", "b", 180],
+            pickable=True,
+        )
+        view_state = pdk.ViewState(latitude=14.329, longitude=120.936, zoom=12)
+        deck = pdk.Deck(layers=[layer], initial_view_state=view_state, tooltip={"text": "{name}\n{aqi_cat}"})
+        st.pydeck_chart(deck, use_container_width=True)
+    else:
+        st.warning(
+            "To enable the map, add either:\n"
+            "1) `data/dasmarinas_barangays.geojson` **and** `data/site_binding.csv` (columns: polygon_name,location_code),\n"
+            "   or\n"
+            "2) `data/barangays_dasmarinas.csv` with columns: name,lat,lon,location_code."
+        )
+        st.info(
+            "Tip: `location_code` can be any code present in your CSV (auto‑detected). "
+            "We color each barangay by the **selected** category scale (EPA AQI or DENR PM2.5)."
+        )
+
+
+# ---------- Footer note ----------
+st.info(
+    "Notes: Preprocessing = sort → humidity cap at 100 → AQI zero‑fix (rolling median, w=5) → "
+    "5‑min resample (median) → interpolate ≤ 30 min. Forecasts use DES with optional auto‑tuning and "
+    "90% CIs; humidity clipped to [0,100] and AQI ≥ 0. Categories: EPA/AirNow AQI (0–500) or "
+    "DENR PM2.5 (DAO 2020‑14), selectable at left."
+)
+
+# -----------------------------
+# Heat Index (NOAA/NWS Rothfusz + Steadman fallback)
+# -----------------------------
+# Ref: NOAA/NWS heat index equation
+# https://www.wpc.ncep.noaa.gov/html/heatindex_equation.shtml
+def heat_index_celsius(temp_c: np.ndarray, rh: np.ndarray) -> np.ndarray:
+    T = temp_c * 9.0/5.0 + 32.0  # to °F
+    R = rh
+    HI = (-42.379 + 2.04901523*T + 10.14333127*R - 0.22475541*T*R
+          - 6.83783e-3*T*T - 5.481717e-2*R*R
+          + 1.22874e-3*T*T*R + 8.5282e-4*T*R*R - 1.99e-6*T*T*R*R)
+    adj = np.zeros_like(HI, dtype=float)
+    mask_low = (R < 13) & (T >= 80) & (T <= 112)
+    adj[mask_low] = -((13 - R[mask_low])/4.0) * np.sqrt((17 - np.abs(T[mask_low]-95))/17.0)
+    mask_high = (R > 85) & (T >= 80) & (T <= 87)
+    adj[mask_high] = ((R[mask_high]-85)/10.0) * ((87 - T[mask_high])/5.0)
+    HI = np.where(T < 80, T + 0.33*R - 0.70, HI + adj)
+    return (HI - 32.0) * 5.0/9.0  # back to °C
+
+# PAGASA Heat Index Categories (°C)
+# Not Hazardous (<27), Caution (27–32), Extreme Caution (33–41), Danger (42–51), Extreme Danger (≥52)
+def pagasa_hi_category(hi_c: float) -> str:
+    if not np.isfinite(hi_c):
+        return '—'
+    if hi_c < 27: return "Not Hazardous"
+    if hi_c <= 32: return "Caution (27–32°C)"
+    if hi_c <= 41: return "Extreme Caution (33–41°C)"
+    if hi_c <= 51: return "Danger (42–51°C)"
+    return "Extreme Danger (≥52°C)"
+
+# US EPA AQI Categories (index)
+def epa_aqi_category(aqi_value: float) -> str:
+    if aqi_value is None or (isinstance(aqi_value, float) and np.isnan(aqi_value)):
+        return "—"
+    aqi = float(aqi_value)
+    if aqi <= 50: return "Good"
+    if aqi <= 100: return "Moderate"
+    if aqi <= 150: return "Unhealthy for Sensitive Groups"
+    if aqi <= 200: return "Unhealthy"
+    if aqi <= 300: return "Very Unhealthy"
+    return "Hazardous"
+
+AQI_COLORS = {
+    "Good": "#009966",
+    "Moderate": "#FFDE33",
+    "Unhealthy for Sensitive Groups": "#FF9933",
+    "Unhealthy": "#CC0033",
+    "Very Unhealthy": "#660099",
+    "Hazardous": "#7E0023",
+    "—": "#999999"
+}
+
+RISK_COLORS = {
+    "Normal": "#2B8A3E",
+    "Moderate": "#F59F00",
+    "High": "#D9480F",
+    "Unknown": "#868E96"
+}
+
+HI_BAND_SHAPES = [
+    (None, 27, 'rgba(0,0,0,0)'),
+    (27, 32, 'rgba(255,235,132,0.25)'),
+    (32, 41, 'rgba(255,165,0,0.20)'),
+    (41, 51, 'rgba(255,69,58,0.20)'),
+    (51, None, 'rgba(156,39,176,0.15)')
+]
+
+# Pre-compute Heat Index for history
+# Pre-compute Heat Index for history                                    
+if "tempC" in proc.columns and "humidity" in proc.columns:
+    # Use the function names you defined (calculate_heat_index)
+    proc["heat_index"] = proc.apply(lambda r: calculate_heat_index(r["tempC"], r["humidity"]), axis=1)
