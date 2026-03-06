@@ -94,37 +94,23 @@ raw = load_data(uploaded.getvalue() if uploaded else None, default_path)
 
 # ---------- Auto-detect sites & dynamic labels ----------
 @st.cache_data(show_spinner=False)
-def process_site(df: pd.DataFrame, site_code: str, steps: int,
-                 alpha: float | None, beta: float | None, auto_tune: bool):
-    site_df = df[df["Location"] == site_code].copy()
-    if site_df.empty:
-        return None
+def detect_sites_and_labels(df: pd.DataFrame) -> tuple[list[str], dict, dict]:
+    """
+    Returns (site_codes, code->label, label->code).
+    Uses existing SITE_NAME for known codes; for others, creates 'Site <code>'.
+    """
+    codes = list(pd.Series(df["Location"].dropna().unique()).astype(str))
+    code_to_label = {}
+    for code in codes:
+        if code in SITE_NAME:
+            code_to_label[code] = SITE_NAME[code]
+        else:
+            code_to_label[code] = f"Site {code}"
+    label_to_code = {v: k for k, v in code_to_label.items()}
+    return codes, code_to_label, label_to_code
 
-    proc = preprocess_site(site_df)
-    
-    # CALCULATE HEAT INDEX HERE (Before forecasting)
-    if "tempC" in proc.columns and "humidity" in proc.columns:
-        proc["heat_index"] = proc.apply(
-            lambda r: calculate_heat_index(r["tempC"], r["humidity"]), axis=1
-        )
 
-    if proc.empty:
-        return None
-
-    last_ts = proc.index[-1]
-    future_idx = pd.date_range(last_ts + pd.Timedelta("5min"), periods=steps, freq="5min")
-
-    results = {}
-    chosen = {}
-
-    # This loop will now automatically include "heat_index" 
-    # because it is in signals{} and now in proc.columns
-    for col, meta in signals.items():
-        series = proc[col].values if col in proc.columns else None
-        if series is None or len(series) == 0:
-            continue
-        
-        # ... (rest of your forecasting logic)
+site_codes, CODE2LABEL, LABEL2CODE = detect_sites_and_labels(raw)
 
 # ---------- Signals & helpers ----------
 signals = {
