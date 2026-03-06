@@ -723,17 +723,6 @@ else:
     df = df_hist.copy()
 
 # --- 3. MULTI-VARIABLE CHARTING ---
-if not df.empty:
-    # Create figure with a secondary y-axis to handle different scales
-    fig = make_subplots(specs=[[{"secondary_y": True}]])
-
-    # Add Temperature (Left Axis)
-    if 'timestamp' in df.columns and 'tempC' in df.columns:
-        fig.add_trace(
-            go.Scatter(x=df['timestamp'], y=df['tempC'], name="Temp (°C)", 
-                       line=dict(color='#ff4b4b', width=2)),
-            secondary_y=False,
-        )
 
     # Add Humidity (Left Axis)
     if 'timestamp' in df.columns and 'humidity' in df.columns:
@@ -893,50 +882,6 @@ with st.expander("Sensor Health (QC & Trust Scores)", expanded=False):
             st.info("No sensor summary available.")
     except Exception:
         st.warning("Unable to render sensor health summary.")
-
-# 3. THE CHART (The "Separated" View)
-if not df.empty and 'timestamp' in df.columns:
-    # Create figure with a secondary y-axis for AQI
-    fig = make_subplots(specs=[[{"secondary_y": True}]])
-
-    # Temperature (Left Axis)
-    if 'tempC' in df.columns:
-        fig.add_trace(
-            go.Scatter(x=df['timestamp'], y=df['tempC'], name="Temp (°C)", line=dict(color='red')),
-            secondary_y=False,
-        )
-
-    # Humidity (Left Axis - Shares scale with Temp)
-    if 'humidity' in df.columns:
-        fig.add_trace(
-            go.Scatter(x=df['timestamp'], y=df['humidity'], name="Humidity (%)", line=dict(color='green')),
-            secondary_y=False,
-        )
-
-    # AQI (Right Axis - Separated so it doesn't squash the others)
-    if 'aqi' in df.columns:
-        fig.add_trace(
-            go.Scatter(x=df['timestamp'], y=df['aqi'], name="AQI", line=dict(color='blue')),
-            secondary_y=True,
-        )
-
-    fig.update_layout(template="plotly_dark", title="Dasmariñas Real-Time Monitor")
-    # add prediction confidence annotation if available
-    try:
-        if pred_conf is not None:
-            if pred_conf >= 0.8:
-                conf_bg = "#2ecc71"
-            elif pred_conf >= 0.6:
-                conf_bg = "#f1c40f"
-            else:
-                conf_bg = "#e74c3c"
-            fig.add_annotation(text=f"Prediction confidence: {pred_conf:.0%}", xref='paper', yref='paper', x=0.99, y=0.95, showarrow=False, bgcolor=conf_bg, font=dict(color='black'))
-    except Exception:
-        pass
-
-    st.plotly_chart(fig, width='stretch')
-else:
-    st.warning("Waiting for sensor data...")
 
 # -----------------------------
 # Heat Index (NOAA/NWS Rothfusz + Steadman fallback)
