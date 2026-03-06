@@ -26,7 +26,7 @@ st.caption("Holt's Double Exponential Smoothing (DES) — 5‑minute resolution,
 with st.sidebar:
     st.header("Controls")
     uploaded = st.file_uploader("Upload sensor_log.csv", type=["csv"])
-    default_path = os.path.join("data", "sensor_log.csv")
+    default_path = os.path.join("sensor_log.csv")
 
     auto_tune = st.checkbox(
         "Auto‑tune α, β per signal",
@@ -520,9 +520,9 @@ if tab_choice == "City map":
         latest_by_site[code] = {"label": CODE2LABEL[code], "value": val, "cat": cat, "color": color}
 
     # Files (optional)
-    gj_path = os.path.join("data", "dasmarinas_barangays.geojson")      # GeoJSON polygons
-    bind_path = os.path.join("data", "site_binding.csv")                # polygon_name,location_code
-    pts_path = os.path.join("data", "barangays_dasmarinas.csv")         # name,lat,lon,location_code
+    gj_path = os.path.join("dasmarinas_barangays.geojson")      # GeoJSON polygons
+    bind_path = os.path.join("site_binding.csv")                # polygon_name,location_code
+    pts_path = os.path.join("barangays_dasmarinas.csv")         # name,lat,lon,location_code
 
     def attach_color_to_feature(feat, latest_dict):
         name = feat.get("properties", {}).get("name") or feat.get("properties", {}).get("NAME")
