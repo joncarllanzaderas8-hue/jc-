@@ -726,21 +726,28 @@ else:
 # -----------------------------
 @st.cache_data
 def load_data(path: str = "sensor_log.csv") -> pd.DataFrame:
+    if not os.path.exists(path):
+        return pd.DataFrame()
     df = pd.read_csv(path)
-    # Parse time
     if 'timestamp' in df.columns:
         df['timestamp'] = pd.to_datetime(df['timestamp'], errors='coerce')
-    # Drop duplicate (timestamp, Location)
-    if set(['timestamp','Location']).issubset(df.columns):
-        df = df.drop_duplicates(subset=['timestamp','Location'])
-    # Treat suspicious zeros as missing
     for c in ['aqi','mqRaw']:
         if c in df.columns:
             df.loc[df[c] == 0, c] = np.nan
     return df
 
-df = load_data()
-df_hist = df.copy()
+df_hist = load_data()
+
+def run_qc_only(df_in: pd.DataFrame):
+    if df_in.empty: return df_in, pd.DataFrame()
+    df = df_in.copy()
+    # Basic Thresholds
+    df['qc_issue'] = (df['tempC'] < -20) | (df['tempC'] > 60) | df['tempC'].isna()
+    # Simple summary
+    summary = df.groupby('Location').size().reset_index(name='rows')
+    return df, summary
+
+df_hist, sensors_summary = run_qc_only(df_hist)
 
 def run_qc_and_trust(df_in: pd.DataFrame):
     df = df_in.copy()
@@ -801,10 +808,6 @@ def run_qc_and_trust(df_in: pd.DataFrame):
     if 'site' in df_sites.columns:
         df_sites = df_sites.sort_values('site')
     return df, df_sites
-
-
-# run QC and compute trust
-df_hist, sensors_summary = run_qc_and_trust(df_hist)
 
 # Sensor Health UI: show per-site trust scores and simple chart
 with st.expander("Sensor Health (QC & Trust Scores)", expanded=False):
