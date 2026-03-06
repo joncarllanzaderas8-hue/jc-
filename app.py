@@ -1330,7 +1330,9 @@ import json
 import re
 from datetime import datetime
 from collections import deque
-from IPython.display import clear_output, display
+import streamlit as st
+# ... code ...
+st.pyplot(fig)
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
