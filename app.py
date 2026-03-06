@@ -1323,20 +1323,9 @@ with st.expander("🪪 Model Card"):
 
 st.caption("Developed for the Dasmariñas Environmental Monitoring Project. Standards: NOAA/NWS Heat Index; PAGASA HI categories; US EPA AQI.")
 
-import threading
-import time
-import queue
-import json
-import re
-import os
-import sys
-from datetime import datetime
-from collections import deque
-from IPython.display import clear_output, display
-
+import streamlit as st
 import pandas as pd
 import numpy as np
-import matplotlib
 import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
 import matplotlib.gridspec as gridspec
@@ -1344,171 +1333,109 @@ import warnings
 
 warnings.filterwarnings('ignore')
 
-# ── Serial Setup ──────────────────────────────────────────────────────────
-try:
-    import serial
-    import serial.tools.list_ports
-    SERIAL_AVAILABLE = True
-except ImportError:
-    SERIAL_AVAILABLE = False
+# --- CONFIGURATION & STYLING ---
+st.set_page_config(page_title="Sensor Forecast Dashboard", layout="wide")
 
-# ── Configuration ─────────────────────────────────────────────────────────
-SIGNALS = {
-    'tempC':    {'label': 'Temperature',   'unit': '°C',  'color': '#ff6b6b', 'warn': 35,  'ylim': (24, 40)},
-    'humidity': {'label': 'Humidity',      'unit': '%',   'color': '#4ecdc4', 'warn': 90,  'ylim': (55, 105)},
-    'mqRaw':    {'label': 'MQ Gas Sensor', 'unit': 'raw', 'color': '#ffd93d', 'warn': 350, 'ylim': (50, 550)},
-    'aqi':      {'label': 'AQI',           'unit': '',    'color': '#6bcb77', 'warn': 50,  'ylim': (0, 80)},
-}
-
-FORECAST_STEPS   = 48       # 48 steps * 5 min = 4 hours
-HOLT_ALPHA       = 0.30     
-HOLT_BETA        = 0.15     
-CI_Z             = 1.645    # 90% Confidence Interval
-MIN_OBS_FORECAST = 10       
-SERIAL_PORT      = None     # Auto-detected below
-BAUD_RATE        = 9600
-READ_TIMEOUT     = 2.0
-LIVE_BUFFER_SIZE = 2000     
-LOG_FILE        = "live_log.csv"
-
-# Matplotlib dark theme styling
-matplotlib.use('Agg')
+# Apply the dark theme style to matplotlib
 plt.rcParams.update({
-    'figure.facecolor': '#0f1117',
+    'figure.facecolor': '#0e1117', # Streamlit dark background
     'axes.facecolor':   '#1a1d27',
-    'axes.edgecolor':   '#2a2d3a',
+    'axes.edgecolor':   '#333',
     'axes.labelcolor':  '#aaa',
-    'xtick.color':      '#888',
-    'ytick.color':      '#888',
+    'xtick.color':      '#aaa',
+    'ytick.color':      '#aaa',
     'text.color':       '#ddd',
     'grid.color':       '#2a2d3a',
     'font.family':      'monospace',
 })
 
-# ── Forecasting Logic ─────────────────────────────────────────────────────
-def holt_forecast(series, alpha=HOLT_ALPHA, beta=HOLT_BETA, steps=FORECAST_STEPS):
+SIGNALS = {
+    'tempC':    ('Temperature',   '°C',  '#ff6b6b'),
+    'humidity': ('Humidity',      '%',   '#4ecdc4'),
+    'mqRaw':    ('MQ Gas Sensor', 'raw', '#ffd93d'),
+    'aqi':      ('AQI',           '',    '#6bcb77'),
+}
+
+# --- FUNCTIONS ---
+def holt_forecast(series, alpha=0.3, beta=0.15, steps=48):
     y = np.array(series, dtype=float)
     n = len(y)
-    if n < 2:
-        return np.full(steps, y[-1]), np.full(steps, y[-1]), np.full(steps, y[-1]), 0.0
-
-    l = np.zeros(n); b = np.zeros(n)
-    l[0] = y[0];     b[0] = y[1] - y[0]
+    l, b = np.zeros(n), np.zeros(n)
+    l[0], b[0] = y[0], (y[1] - y[0] if n > 1 else 0.0)
 
     for t in range(1, n):
         l[t] = alpha * y[t] + (1 - alpha) * (l[t-1] + b[t-1])
         b[t] = beta  * (l[t] - l[t-1]) + (1 - beta) * b[t-1]
 
     forecasts = np.array([l[-1] + (h+1)*b[-1] for h in range(steps)])
-    residuals = y[1:] - (l[:-1] + b[:-1])
-    rmse      = np.sqrt(np.mean(residuals**2)) if len(residuals) else 0.0
-    lower = forecasts - CI_Z * rmse * np.sqrt(np.arange(1, steps+1))
-    upper = forecasts + CI_Z * rmse * np.sqrt(np.arange(1, steps+1))
-
+    fitted = l + b
+    rmse = np.sqrt(np.mean((y[1:] - fitted[:-1])**2))
+    
+    z = 1.645 # 90% CI
+    lower = forecasts - z * rmse * np.sqrt(np.arange(1, steps+1))
+    upper = forecasts + z * rmse * np.sqrt(np.arange(1, steps+1))
     return forecasts, lower, upper, rmse
 
-# ── Data Parsing & Helpers ────────────────────────────────────────────────
-def clean_incoming(row: dict) -> dict:
-    row = {k: float(v) for k, v in row.items() if k in SIGNALS}
-    row['humidity'] = min(row.get('humidity', 0), 100)
-    return row
+# --- APP LAYOUT ---
+st.title("🌡️ Sensor Log — 4-Hour Forecasting")
+st.markdown("Method: **Holt's Double Exponential Smoothing**")
 
-def parse_serial_line(line: str) -> dict | None:
-    line = line.strip()
-    if not line: return None
-    if line.startswith('{'):
-        try:
-            d = json.loads(line)
-            if all(k in d for k in SIGNALS): return clean_incoming(d)
-        except: pass
-    parts = re.split(r'[,\t;]', line)
-    if len(parts) >= 4:
-        try:
-            keys = list(SIGNALS.keys())
-            return clean_incoming({keys[i]: float(parts[i]) for i in range(4)})
-        except: pass
-    return None
+# Sidebar for controls
+st.sidebar.header("Model Settings")
+alpha = st.sidebar.slider("Alpha (Level)", 0.0, 1.0, 0.3)
+beta = st.sidebar.slider("Beta (Trend)", 0.0, 1.0, 0.15)
+history_hrs = st.sidebar.number_input("History to show (hours)", 1, 48, 6)
 
-# ── Visualization Engine ──────────────────────────────────────────────────
-def render_dashboard(live_buf, new_row=None, alerts=None):
-    if len(live_buf) < 2: return
-    df_live = pd.DataFrame(list(live_buf)).set_index('timestamp')
-    df_live = df_live[list(SIGNALS.keys())].apply(pd.to_numeric).dropna()
+# Data Loading
+try:
+    df_raw = pd.read_csv("sensor_log.csv")
+    df_raw['timestamp'] = pd.to_datetime(df_raw['timestamp'])
+    df = df_raw.sort_values('timestamp').reset_index(drop=True)
     
-    last_ts = df_live.index[-1]
-    future_idx = pd.date_range(last_ts + pd.Timedelta('5min'), periods=FORECAST_STEPS, freq='5min')
+    # Preprocessing
+    df['humidity'] = df['humidity'].clip(upper=100)
+    df = df.set_index('timestamp')
+    df_rs = df[['tempC', 'humidity', 'mqRaw', 'aqi']].resample('5min').median()
+    df_rs = df_rs.interpolate(method='time', limit=6).dropna()
     
-    fig = plt.figure(figsize=(18, 15), facecolor='#0f1117')
-    title = f"⚡ LIVE Arduino Forecast | {datetime.now().strftime('%H:%M:%S')} | {len(df_live)} obs"
-    fig.suptitle(title, color='#6bcb77' if not alerts else '#ff6b6b', fontsize=13, fontweight='bold', y=0.995)
+    last_ts = df_rs.index[-1]
+    future_idx = pd.date_range(last_ts + pd.Timedelta('5min'), periods=48, freq='5min')
 
-    gs = gridspec.GridSpec(2, 2, figure=fig, hspace=0.50, wspace=0.32)
-    HIST = min(len(df_live), 72)
-
-    for idx, (col, cfg) in enumerate(SIGNALS.items()):
-        ax = fig.add_subplot(gs[idx // 2, idx % 2])
-        ser = df_live[col].iloc[-HIST:]
-        fc, lo, hi, rmse = holt_forecast(df_live[col].values)
-
-        ax.plot(ser.index, ser.values, color=cfg['color'], lw=1.8, label='Observed')
-        ax.plot(future_idx, fc, color=cfg['color'], lw=2.0, ls='--', label='Forecast')
-        ax.fill_between(future_idx, lo, hi, color=cfg['color'], alpha=0.15)
-        ax.axhline(cfg['warn'], color='#ff6b6b', lw=0.8, ls='--', alpha=0.5)
+    # Metrics Row
+    cols = st.columns(4)
+    results = {}
+    for i, (col_name, (label, unit, color)) in enumerate(SIGNALS.items()):
+        fc, lo, hi, rmse = holt_forecast(df_rs[col_name], alpha=alpha, beta=beta)
+        results[col_name] = {'forecast': fc, 'lower': lo, 'upper': hi, 'unit': unit, 'color': color, 'label': label}
         
-        ax.set_title(f"{cfg['label']} · now: {df_live[col].iloc[-1]:.1f} {cfg['unit']}", color=cfg['color'], fontweight='bold')
-        ax.set_ylim(cfg['ylim'])
+        diff = fc[-1] - df_rs[col_name].iloc[-1]
+        cols[i].metric(label, f"{df_rs[col_name].iloc[-1]:.1f} {unit}", f"{diff:+.1f} forecast")
+
+    # Plotting
+    st.subheader("Forecast Visuals")
+    fig = plt.figure(figsize=(15, 10))
+    gs = gridspec.GridSpec(2, 2, hspace=0.3, wspace=0.2)
+    hist_win = df_rs[df_rs.index >= (last_ts - pd.Timedelta(hours=history_hrs))]
+
+    for idx, (col, res) in enumerate(results.items()):
+        ax = fig.add_subplot(gs[idx // 2, idx % 2])
+        ax.plot(hist_win.index, hist_win[col], color=res['color'], lw=2, label='Observed')
+        ax.plot(future_idx, res['forecast'], color=res['color'], lw=2, ls='--', label='Forecast')
+        ax.fill_between(future_idx, res['lower'], res['upper'], color=res['color'], alpha=0.15)
+        ax.axvline(last_ts, color='white', lw=0.8, ls=':')
+        ax.set_title(f"{res['label']} ({res['unit']})")
         ax.xaxis.set_major_formatter(mdates.DateFormatter('%H:%M'))
-        ax.grid(True)
+        ax.grid(True, alpha=0.3)
 
-    clear_output(wait=True)
-    display(fig)
-    plt.close(fig)
+    st.pyplot(fig)
 
-# ── Main Execution Loop ───────────────────────────────────────────────────
-read_queue = queue.Queue()
-stop_event = threading.Event()
-live_buffer = deque(maxlen=LIVE_BUFFER_SIZE)
+    # Data Export
+    st.subheader("Export Forecast Data")
+    if st.button("Generate CSV"):
+        export_df = pd.DataFrame({"timestamp": future_idx})
+        for col in SIGNALS:
+            export_df[f"{col}_forecast"] = results[col]['forecast']
+        st.download_button("Download CSV", export_df.to_csv(index=False), "forecast.csv", "text/csv")
 
-def serial_reader_thread():
-    # Attempt to find Arduino
-    port = None
-    if SERIAL_AVAILABLE:
-        for p in serial.tools.list_ports.comports():
-            if any(k in (p.description or "").lower() for k in ['arduino', 'usb serial', 'ch340']):
-                port = p.device
-                break
-    
-    if not port:
-        print("🔶 SIMULATION MODE — No Arduino detected")
-        last = {k: 25.0 for k in SIGNALS}
-        while not stop_event.is_set():
-            for k in SIGNALS: last[k] += np.random.normal(0, 0.1)
-            read_queue.put({'timestamp': datetime.now(), **clean_incoming(last)})
-            time.sleep(2)
-        return
-
-    ser = serial.Serial(port, BAUD_RATE, timeout=READ_TIMEOUT)
-    while not stop_event.is_set():
-        raw = ser.readline().decode('utf-8', errors='replace')
-        row = parse_serial_line(raw)
-        if row: read_queue.put({'timestamp': datetime.now(), **row})
-    ser.close()
-
-def run_live():
-    t = threading.Thread(target=serial_reader_thread, daemon=True)
-    t.start()
-    try:
-        while True:
-            new_row = None
-            while not read_queue.empty():
-                new_row = read_queue.get_nowait()
-                live_buffer.append(new_row)
-            if new_row:
-                render_dashboard(live_buffer, new_row)
-            time.sleep(0.5)
-    except KeyboardInterrupt:
-        stop_event.set()
-        print("Stopped.")
-
-# To run, simply call:
-# run_live()
+except Exception as e:
+    st.error(f"Please ensure 'sensor_log.csv' is in the same directory. Error: {e}")
