@@ -58,11 +58,11 @@ with st.sidebar:
 
     
 # ---------- Sidebar controls ----------
-with st.sidebar:
-    st.header("Controls")
-    uploaded = st.file_uploader("Upload sensor_log.csv", type=["csv"])
-    default_path = os.path.join("sensor_log.csv")
-
+# 2. File Uploader with the (?) help icon
+    uploaded_file = st.file_uploader(
+        "Upload Sensor Log", 
+        type=["csv"],
+        help="""
         **Expected CSV Structure:**
         * **timestamp**: e.g., 2024-05-20 14:30
         * **tempC**: Temperature in Celsius
@@ -86,6 +86,12 @@ with st.sidebar:
             'mqRaw': [508, 609],
             'aqi': [45, 48]
         })
+        
+        st.download_button(
+            label="📥 Download CSV Template",
+            data=template_df.to_csv(index=False),
+            file_name="sensor_template.csv",
+            mime="text/csv"
         
         st.download_button(
             label="📥 Download CSV Template",
