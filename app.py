@@ -60,8 +60,27 @@ with st.sidebar:
 # ---------- Sidebar controls ----------
 with st.sidebar:
     st.header("Controls")
-    uploaded = st.file_uploader("Upload sensor_log.csv", type=["csv"])
-    default_path = os.path.join("sensor_log.csv")
+    
+    # 1. File Uploader with the (?) help icon
+    uploaded = st.file_uploader(
+        "Upload sensor_log.csv", 
+        type=["csv"],
+        help="""
+        **CSV Requirements:**
+        * **Location**: Site name (e.g., Residential, SM Dasma)
+        * **timestamp**: YYYY-MM-DD HH:MM format
+        * **tempC**: Temperature in Celsius
+        * **humidity**: Humidity % (0-100)
+        * **mqRaw**: Gas sensor raw value
+        """
+    )
+
+    # 2. Visual Guidance Box (Shown only when no file is uploaded)
+    if not uploaded:
+        with st.expander("📝 CSV Format Guide", expanded=False):
+            st.write("Ensure your CSV has these exact headers:")
+            st.code("Location,timestamp,tempC,humidity,mqRaw")
+            st.caption("Note: Heat Index is calculated automatically.")
     auto_tune = st.checkbox(
         "Auto‑tune α, β per signal",
         value=False,
