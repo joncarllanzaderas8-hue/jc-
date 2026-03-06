@@ -1333,23 +1333,20 @@ import warnings
 
 warnings.filterwarnings('ignore')
 
-# --- 1. Page Configuration ---
-st.set_page_config(page_title="Sensor Forecast Dashboard", layout="wide")
+# --- 1. Page Configuration & Custom CSS for Dark Theme ---
+st.set_page_config(page_title="Sensor Forecast", layout="wide")
 
-st.title("🌡️ Sensor Log — 4-Hour Forecasting Dashboard")
-st.markdown("This dashboard uses **Holt's Double Exponential Smoothing** to predict environmental trends.")
+# Custom CSS to match the deep dark background of the reference image
+st.markdown("""
+    <style>
+    .main { background-color: #0f1117; }
+    div[data-testid="stMetricValue"] { color: white; }
+    </style>
+    """, unsafe_allow_html=True)
 
-# --- 2. Styling & Constants ---
-SIGNALS = {
-    'tempC':    ('Temperature',   '°C',  '#ff6b6b'),
-    'humidity': ('Humidity',      '%',   '#4ecdc4'),
-    'mqRaw':    ('MQ Gas Sensor', 'raw', '#ffd93d'),
-    'aqi':      ('AQI',           '',    '#6bcb77'),
-}
-
-# Apply dark theme styling to Matplotlib
+# --- 2. Global Plot Styling (Matching the Image) ---
 plt.rcParams.update({
-    'figure.facecolor': '#0e1117',
+    'figure.facecolor': '#0f1117',
     'axes.facecolor':   '#1a1d27',
     'axes.edgecolor':   '#333',
     'axes.labelcolor':  '#aaa',
@@ -1357,8 +1354,17 @@ plt.rcParams.update({
     'ytick.color':      '#aaa',
     'text.color':       '#ddd',
     'grid.color':       '#2a2d3a',
+    'grid.linewidth':   0.6,
+    'lines.linewidth':  1.8,
     'font.family':      'monospace',
 })
+
+SIGNALS = {
+    'tempC':    ('Temperature (°C)',   '°C',  '#ff6b6b'),
+    'humidity': ('Humidity (%)',      '%',   '#4ecdc4'),
+    'mqRaw':    ('MQ Raw (gas sensor)', 'raw', '#ffd93d'),
+    'aqi':      ('AQI',           '',    '#6bcb77'),
+}
 
 # --- 3. Forecasting Logic ---
 def holt_forecast(series, alpha=0.3, beta=0.15, steps=48):
@@ -1381,73 +1387,77 @@ def holt_forecast(series, alpha=0.3, beta=0.15, steps=48):
     upper = forecasts + z * rmse * np.sqrt(np.arange(1, steps+1))
     return forecasts, lower, upper, rmse
 
-# --- 4. Data Loading & Preprocessing ---
+# --- 4. Load Data ---
 @st.cache_data
-def load_and_preprocess(path):
-    df = pd.read_csv(path)
+def load_data():
+    # Replace with your actual data loading logic
+    df = pd.read_csv("sensor_log.csv")
     df['timestamp'] = pd.to_datetime(df['timestamp'])
-    df = df.sort_values('timestamp').reset_index(drop=True)
-    
-    # Preprocessing steps
-    df['humidity'] = df['humidity'].clip(upper=100)
-    rolling_med = df['aqi'].rolling(5, center=True, min_periods=1).median()
-    df['aqi'] = np.where(df['aqi'] == 0, rolling_med, df['aqi'])
-    
-    df = df.set_index('timestamp')
-    df_rs = df[['tempC', 'humidity', 'mqRaw', 'aqi']].resample('5min').median()
-    df_rs = df_rs.interpolate(method='time', limit=6).dropna()
+    df = df.sort_values('timestamp').set_index('timestamp')
+    df_rs = df.resample('5min').median().interpolate(method='time', limit=6).dropna()
     return df_rs
 
 try:
-    df_rs = load_and_preprocess("sensor_log.csv")
-    
-    # --- 5. Sidebar Controls ---
-    st.sidebar.header("Model Parameters")
-    alpha = st.sidebar.slider("Alpha (Level Smoothing)", 0.0, 1.0, 0.3)
-    beta = st.sidebar.slider("Beta (Trend Smoothing)", 0.0, 1.0, 0.15)
-    history_hrs = st.sidebar.number_input("History Hours to Show", 1, 24, 6)
-
-    # --- 6. Run Model ---
-    steps = 48 # 4 hours
+    df_rs = load_data()
     last_ts = df_rs.index[-1]
+    steps = 48
     future_idx = pd.date_range(last_ts + pd.Timedelta('5min'), periods=steps, freq='5min')
-    
-    results = {}
-    for col, (label, unit, color) in SIGNALS.items():
-        fc, lo, hi, rmse = holt_forecast(df_rs[col], alpha=alpha, beta=beta, steps=steps)
-        results[col] = {'fc': fc, 'lo': lo, 'hi': hi, 'rmse': rmse}
 
-    # --- 7. Visualization ---
-    fig = plt.figure(figsize=(15, 10))
-    gs = gridspec.GridSpec(2, 2, hspace=0.3, wspace=0.2)
-    hist_win = df_rs[df_rs.index >= (last_ts - pd.Timedelta(hours=history_hrs))]
+    # --- 5. Run Forecasts and Store Results ---
+    results = {}
+    table_rows = []
+    for col, (label, unit, color) in SIGNALS.items():
+        fc, lo, hi, rmse = holt_forecast(df_rs[col])
+        results[col] = {'fc': fc, 'lo': lo, 'hi': hi, 'color': color, 'label': label}
+        
+        # Prepare data for the summary table (as seen in image)
+        table_rows.append({
+            "Signal": label,
+            "Last Observed": round(df_rs[col].iloc[-1], 2),
+            "Forecast +1h": round(fc[11], 2),
+            "Forecast +2h": round(fc[23], 2),
+            "Forecast +4h": round(fc[-1], 2),
+            "RMSE": round(rmse, 3)
+        })
+
+    # --- 6. The Dashboard Grid ---
+    st.markdown(f"<h3 style='text-align: center; color: white;'>Sensor Log — 4-Hour Forecast</h3>", unsafe_allow_html=True)
+    st.markdown(f"<p style='text-align: center; color: #888;'>History: last 6 h | Forecast horizon: {last_ts.strftime('%Y-%m-%d %H:%M')} → {future_idx[-1].strftime('%H:%M')}</p>", unsafe_allow_html=True)
+
+    fig = plt.figure(figsize=(16, 10))
+    gs = gridspec.GridSpec(2, 2, hspace=0.4, wspace=0.3)
 
     for idx, (col, (label, unit, color)) in enumerate(SIGNALS.items()):
         ax = fig.add_subplot(gs[idx//2, idx%2])
-        ax.plot(hist_win.index, hist_win[col], color=color, label='Observed', lw=2)
+        
+        # Plot History
+        hist = df_rs[col].tail(72) # approx 6 hours
+        ax.plot(hist.index, hist.values, color=color, label='Observed', alpha=0.9)
+        
+        # Plot Forecast
         ax.plot(future_idx, results[col]['fc'], color=color, ls='--', label='Forecast')
-        ax.fill_between(future_idx, results[col]['lo'], results[col]['hi'], color=color, alpha=0.1)
-        ax.axvline(last_ts, color='white', ls=':', alpha=0.5)
-        ax.set_title(f"{label} ({unit})", fontsize=10)
+        ax.fill_between(future_idx, results[col]['lo'], results[col]['hi'], color=color, alpha=0.15, label='90% CI')
+        
+        # Vertical "NOW" line
+        ax.axvline(last_ts, color='white', ls='--', lw=0.8, alpha=0.5)
+        
+        # Final value annotation (The red/green numbers at the end of the line)
+        ax.text(future_idx[-1], results[col]['fc'][-1], f" {results[col]['fc'][-1]:.1f}", 
+                color=color, fontweight='bold', va='center')
+
+        ax.set_title(label, fontsize=12, fontweight='bold', pad=10)
+        ax.grid(True, alpha=0.2)
         ax.xaxis.set_major_formatter(mdates.DateFormatter('%H:%M'))
-        ax.legend(prop={'size': 7})
+        ax.legend(loc='upper left', fontsize=8, frameon=False)
 
     st.pyplot(fig)
 
-    # --- 8. Metrics & Data Export ---
-    cols = st.columns(4)
-    for i, (col, (label, unit, color)) in enumerate(SIGNALS.items()):
-        current_val = df_rs[col].iloc[-1]
-        forecast_val = results[col]['fc'][-1]
-        delta = forecast_val - current_val
-        cols[i].metric(label, f"{forecast_val:.2f} {unit}", f"{delta:.2f}")
-
-    st.subheader("Forecast Data")
-    st.dataframe(pd.DataFrame({
-        "Time": future_idx,
-        "Temp Forecast": results['tempC']['fc'],
-        "AQI Forecast": results['aqi']['fc']
-    }))
+    # --- 7. The Summary Table (Matching the Bottom of the Image) ---
+    st.write("---")
+    df_table = pd.DataFrame(table_rows)
+    
+    # Using a container and HTML to style the table similar to the reference
+    st.table(df_table.set_index("Signal"))
 
 except Exception as e:
-    st.error(f"Waiting for data or error occurred: {e}")
+    st.error(f"Error: {e}")
