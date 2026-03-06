@@ -58,47 +58,10 @@ with st.sidebar:
 
     
 # ---------- Sidebar controls ----------
-# 2. File Uploader with the (?) help icon
-    uploaded_file = st.file_uploader(
-        "Upload Sensor Log", 
-        type=["csv"],
-        help="""
-        **Expected CSV Structure:**
-        * **timestamp**: e.g., 2024-05-20 14:30
-        * **tempC**: Temperature in Celsius
-        * **humidity**: Humidity % (0-100)
-        * **mqRaw**: The raw sensor reading (e.g., 200-1024)
-        * **aqi**: Air Quality Index (Optional)
-)
-        *Note: The app will automatically calculate the Heat Index from your Temp and Humidity data.*
-        """
-    )
-
-    # 3. Visual Guidance for the User
-    if uploaded_file is None:
-        st.info("💡 **Tip:** Download the template below to ensure your data matches the dashboard format.")
-        
-        # Create a sample template for them to download
-        template_df = pd.DataFrame({
-            'timestamp': ['2024-05-21 08:00', '2024-05-21 08:05'],
-            'tempC': [30.5, 31.0],
-            'humidity': [70, 68],
-            'mqRaw': [508, 609],
-            'aqi': [45, 48]
-        })
-        
-        st.download_button(
-            label="📥 Download CSV Template",
-            data=template_df.to_csv(index=False),
-            file_name="sensor_template.csv",
-            mime="text/csv"
-        
-        st.download_button(
-            label="📥 Download CSV Template",
-            data=template_df.to_csv(index=False),
-            file_name="sensor_template.csv",
-            mime="text/csv"
-
+with st.sidebar:
+    st.header("Controls")
+    uploaded = st.file_uploader("Upload sensor_log.csv", type=["csv"])
+    default_path = os.path.join("sensor_log.csv")
     auto_tune = st.checkbox(
         "Auto‑tune α, β per signal",
         value=False,
