@@ -25,7 +25,7 @@ def get_hi(temp, hum):
 
 # 2. THE AUTOMATION (Add this where you process your sensor data)
 # This 'forges' the Heat Index data using your existing temp and humidity
-df['heatIndex'] = df.apply(lambda row: get_hi(row['tempC'], row['humidity']), axis=1)9
+df['heatIndex'] = df.apply(lambda row: get_hi(row['tempC'], row['humidity']), axis=1)
 # ---------- Page config ----------
 st.set_page_config(page_title="Barangay Microclimate Forecast", layout="wide")
 st.title("Barangay Microclimate Monitoring — 4‑Hour Forecasts")
