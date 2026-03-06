@@ -125,27 +125,15 @@ if "pm25" in raw.columns:
 
 
 # ---------- Category utilities ----------
-def process_site(df: pd.DataFrame, site_code: str, steps: int,
-                 alpha: float | None, beta: float | None, auto_tune: bool):
-    # ... existing code ...
-    proc = preprocess_site(site_df)
-
-    # --- ADD THIS LINE HERE ---
-    if "tempC" in proc.columns and "humidity" in proc.columns:
-        proc["heat_index"] = proc.apply(lambda r: calculate_heat_index(r["tempC"], r["humidity"]), axis=1)
-    # ---------------------------
-
-    if proc.empty:
-        return None
-        
+# 1. MOVE HELPERS TO THE TOP (Global Scope)
 def calculate_heat_index(temp_c, humidity):
     T = (temp_c * 9/5) + 32
     RH = humidity
     hi = 0.5 * (T + 61.0 + ((T - 68.0) * 1.2) + (RH * 0.094))
     if hi > 80:
-        hi = -42.379 + 2.04901523*T + 10.14333127*RH - 0.22475541*T*RH \
-             - 6.83783e-3*T*T - 5.481717e-2*RH*RH + 1.22874e-3*T*T*RH \
-             + 8.5282e-4*T*RH*RH - 1.99e-6*T*T*RH*RH
+        hi = (-42.379 + 2.04901523*T + 10.14333127*RH - 0.22475541*T*RH 
+              - 6.83783e-3*T*T - 5.481717e-2*RH*RH + 1.22874e-3*T*T*RH 
+              + 8.5282e-4*T*RH*RH - 1.99e-6*T*T*RH*RH)
     return (hi - 32) * 5/9
 
 def get_pagasa_hi_category(hi_c):
@@ -155,51 +143,64 @@ def get_pagasa_hi_category(hi_c):
     if hi_c <= 51: return "Danger", "#ff0000"
     return "Extreme Danger", "#7e0023"
 
-def categorize_pm25_denr(pm25_value: float) -> tuple[str, str]:
-    """
-    DENR DAO 2020-14 PM2.5 breakpoints (µg/m³):
-      Good (0–25), Fair (25.1–35), USG (35.1–45), Very Unhealthy (45.1–55),
-      Acutely Unhealthy (55.1–90), Emergency (> 91)
-    Color palette chosen to roughly align with intuitive traffic-light + extended bands.
-    """
-    try:
-        v = float(pm25_value)
-    except Exception:
-        return ("Unknown", "#888888")
+# 2. UPDATED PROCESS_SITE FUNCTION
+@st.cache_data(show_spinner=False)
+def process_site(df: pd.DataFrame, site_code: str, steps: int,
+                 alpha: float | None, beta: float | None, auto_tune: bool):
+    
+    site_df = df[df["Location"] == site_code].copy()
+    if site_df.empty:
+        return None
 
-    if v <= 25.0:
-        return ("Good", "#00e400")               # green
-    if v <= 35.0:
-        return ("Fair", "#ffff00")               # yellow
-    if v <= 45.0:
-        return ("USG", "#ff7e00")                # orange
-    if v <= 55.0:
-        return ("Very Unhealthy", "#ff0000")     # red
-    if v <= 90.0:
-        return ("Acutely Unhealthy", "#8f3f97")  # purple-ish
-    return ("Emergency", "#7e0023")              # maroon
+    # Preprocess (Resample, Interpolate)
+    proc = preprocess_site(site_df)
+    
+    # IMPORTANT: Generate historical Heat Index before forecasting
+    if "tempC" in proc.columns and "humidity" in proc.columns:
+        proc["heat_index"] = proc.apply(
+            lambda r: calculate_heat_index(r["tempC"], r["humidity"]), axis=1
+        )
 
-    # ... rest of function ...
+    if proc.empty:
+        return None
 
-def label_categories_vector(values: np.ndarray, scale: str) -> list[str]:
-    """
-    Return list of category labels for a numeric array:
-      - "EPA AQI..." scale expects AQI values
-      - "DENR PM2.5..." scale expects PM2.5 concentrations
-    """
-    labels = []
-    for v in values:
-        if scale.startswith("EPA"):
-            cat, _ = categorize_aqi(float(v))
+    last_ts = proc.index[-1]
+    future_idx = pd.date_range(last_ts + pd.Timedelta("5min"), periods=steps, freq="5min")
+
+    results = {}
+    chosen = {}
+
+    # Now the loop will find 'heat_index' in proc.columns and forecast it
+    for col, meta in signals.items():
+        series = proc[col].values if col in proc.columns else None
+        if series is None or len(series) == 0:
+            continue
+
+        if auto_tune:
+            best = tune_holt(series, steps=steps)
+            a, b = best["alpha"], best["beta"]
+            res = best["model"]
         else:
-            cat, _ = categorize_pm25_denr(float(v))
-        labels.append(cat)
-    return labels
+            a, b = alpha, beta
+            res = holt_forecast(series, alpha=a, beta=b, steps=steps)
 
+        # Clip forecasts (e.g., Humidity 0-100)
+        lo_clip, hi_clip = meta["clip"]
+        if lo_clip is not None:
+            res["forecast"] = np.maximum(res["forecast"], lo_clip)
+        if hi_clip is not None:
+            res["forecast"] = np.minimum(res["forecast"], hi_clip)
 
-def hex_to_rgb_tuple(hex_color: str) -> tuple[int, int, int]:
-    h = hex_color.lstrip("#")
-    return tuple(int(h[i : i + 2], 16) for i in (0, 2, 4))
+        results[col] = res
+        chosen[col] = {"alpha": a, "beta": b, "rmse": float(res["rmse"])}
+
+    return {
+        "proc": proc,
+        "last_ts": last_ts,
+        "future_idx": future_idx,
+        "results": results,
+        "chosen": chosen,
+    }
 
 
 # ---------- Site processing ----------
