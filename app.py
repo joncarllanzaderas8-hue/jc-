@@ -428,26 +428,6 @@ if tab_choice == "Single site":
             continue
 
         # compute category per step using selected scale's numeric series
-def label_categories_vector(values: np.ndarray, scale: str) -> list[str]:
-    """
-    Return list of category labels for a numeric array:
-      - "EPA AQI..." scale expects AQI values
-      - "DENR PM2.5..." scale expects PM2.5 concentrations
-    """
-    labels = []
-    for v in values:
-        try:
-            val_float = float(v)
-            if scale.startswith("EPA"):
-                # Ensure categorize_aqi is also defined and imported
-                cat, _ = categorize_aqi(val_float)
-            else:
-                # Ensure categorize_pm25_denr is defined
-                cat, _ = categorize_pm25_denr(val_float)
-            labels.append(cat)
-        except (ValueError, TypeError):
-            labels.append("Unknown")
-    return labels
         if cat_scale.startswith("DENR") and source_name == "pm25" and col == "pm25":
             cat_list = label_categories_vector(res["forecast"], cat_scale)
         elif cat_scale.startswith("EPA") and col == "aqi":
