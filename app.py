@@ -676,7 +676,7 @@ from io import BytesIO
 
 # Optional for PDF/plots
 import matplotlib
-matplotlib.use('Agg')
+from plotly.subplots import make_subplots
 import matplotlib.pyplot as plt
 
 # ---- PDF GUARD: allow app to run even if reportlab isn't installed
