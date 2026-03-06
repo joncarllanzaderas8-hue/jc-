@@ -14,26 +14,6 @@ from preprocessing import preprocess_site, SITE_NAME  # retains your A/B/C defau
 from des import holt_forecast, tune_holt
 from aqi import categorize_aqi  # EPA AQI categorizer (index -> (label, color))
 
-# 1. THE CALCULATION (Add this near the top of app.py)
-def get_hi(temp, hum):
-    # Convert C to F for the standard formula
-    T = (temp * 9/5) + 32
-    # Simple version of the formula
-    hi = 0.5 * (T + 61.0 + ((T - 68.0) * 1.2) + (hum * 0.094))
-    # Convert back to Celsius
-    return (hi - 32) * 5/9
-
-# 2. THE AUTOMATION (Add this where you process your sensor data)
-# This 'forges' the Heat Index data using your existing temp and humidity
-df['heatIndex'] = df.apply(lambda row: get_hi(row['tempC'], row['humidity']), axis=1)
-# ---------- Page config ----------
-st.set_page_config(page_title="Barangay Microclimate Forecast", layout="wide")
-st.title("Barangay Microclimate Monitoring — 4‑Hour Forecasts")
-st.caption("Holt's Double Exponential Smoothing (DES) — 5‑minute resolution, 90% confidence bands")
-
-# Add this to your parameters dictionary in app.py
-"heatIndex": {"alpha": 0.3, "beta": 0.1, "rmse": 1.0}
-
 def calculate_heat_index(temp_c, humidity):
     T = (temp_c * 9/5) + 32
     RH = humidity
