@@ -14,23 +14,18 @@ from preprocessing import preprocess_site, SITE_NAME  # retains your A/B/C defau
 from des import holt_forecast, tune_holt
 from aqi import categorize_aqi  # EPA AQI categorizer (index -> (label, color))
 
-def calculate_heat_index(temp_c, humidity):
-    # 1. Convert Celsius to Fahrenheit
-    T = (temp_c * 9/5) + 32
-    RH = humidity
-
-    # 2. Simple formula for lower temperatures
-    hi = 0.5 * (T + 61.0 + ((T - 68.0) * 1.2) + (RH * 0.094))
-
-    # 3. If the heat index is 80F or higher, use the full Rothfusz regression
-    if hi >= 80:
-        hi = (-42.379 + 2.04901523 * T + 10.14333127 * RH 
-              - 0.22475541 * T * RH - 0.00683783 * T**2 
-              - 0.05481717 * RH**2 + 0.00122874 * T**2 * RH 
-              + 0.00085282 * T * RH**2 - 0.00000199 * T**2 * RH**2)
-
-    # 4. Convert back to Celsius
+# 1. THE CALCULATION (Add this near the top of app.py)
+def get_hi(temp, hum):
+    # Convert C to F for the standard formula
+    T = (temp * 9/5) + 32
+    # Simple version of the formula
+    hi = 0.5 * (T + 61.0 + ((T - 68.0) * 1.2) + (hum * 0.094))
+    # Convert back to Celsius
     return (hi - 32) * 5/9
+
+# 2. THE AUTOMATION (Add this where you process your sensor data)
+# This 'forges' the Heat Index data using your existing temp and humidity
+df['heatIndex'] = df.apply(lambda row: get_hi(row['tempC'], row['humidity']), axis=1)9
 # ---------- Page config ----------
 st.set_page_config(page_title="Barangay Microclimate Forecast", layout="wide")
 st.title("Barangay Microclimate Monitoring — 4‑Hour Forecasts")
