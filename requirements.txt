@@ -6,3 +6,8 @@ joblib
 plotly
 scikit-learn
 streamlit-autorefresh
+ipython
+pyserial
+pandas
+numpy
+matplotlib
