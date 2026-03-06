@@ -419,16 +419,7 @@ if tab_choice == "Single site":
         else:
             # not the "category-driving" series; leave blank
             cat_list = [""] * len(res["forecast"])
-                
-                # Add Heat Index Badge:
-                if "heat_index" in proc.columns:
-                    hi_val = float(proc["heat_index"].iloc[-1])
-                    hi_cat, hi_color = get_pagasa_hi_category(hi_val)
-                    st.markdown(
-                        f"Heat Index: **{hi_val:.1f} °C** — "
-                        f"<span style='color:{hi_color}'>{hi_cat}</span>",
-                        unsafe_allow_html=True,
-                    )
+            
         for i, ts in enumerate(future_idx):
             export_rows.append(
                 {
