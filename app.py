@@ -1440,36 +1440,73 @@ try:
 except Exception as e:
     st.error(f"Please ensure 'sensor_log.csv' is in the same directory. Error: {e}")
 
-import streamlit as st
-import pandas as pd
-import numpy as np
-import plotly.graph_objects as go
-from datetime import datetime
-from collections import deque
-import time
+# --- 8. Forecast Visualization & Dashboard ---
+HISTORY_HOURS = 6
+history_start = last_ts - pd.Timedelta(hours=HISTORY_HOURS)
+hist = df_rs[df_rs.index >= history_start]
 
-# --- Configuration ---
-SIGNALS = {
-    'tempC':    {'label': 'Temperature',   'unit': '°C',  'color': '#ff6b6b', 'warn': 35,  'ylim': (24, 40)},
-    'humidity': {'label': 'Humidity',      'unit': '%',   'color': '#4ecdc4', 'warn': 90,  'ylim': (55, 105)},
-    'mqRaw':    {'label': 'MQ Gas Sensor', 'unit': 'raw', 'color': '#ffd93d', 'warn': 350, 'ylim': (50, 550)},
-    'aqi':      {'label': 'AQI',           'unit': '',    'color': '#6bcb77', 'warn': 50,  'ylim': (0, 80)},
-}
+# Initialize figure with extra space at the bottom for the table
+fig = plt.figure(figsize=(18, 16), facecolor='#0f1117')
+fig.suptitle(
+    f'Sensor Log — 4-Hour Forecast Dashboard\n'
+    f'History: last {HISTORY_HOURS}h | {last_ts.strftime("%Y-%m-%d %H:%M")} → {future_idx[-1].strftime("%H:%M")}',
+    color='white', fontsize=18, fontweight='bold', y=0.96)
 
-FORECAST_STEPS = 48  # 4 hours
-HOLT_ALPHA = 0.30
-HOLT_BETA = 0.15
+# GridSpec: 2 rows for plots, 1 small row for the summary table
+gs = gridspec.GridSpec(3, 2, figure=fig, hspace=0.4, wspace=0.25, height_ratios=[1, 1, 0.4])
 
-# --- Holt's Double Exponential Smoothing Logic ---
-def holt_forecast(series, alpha=HOLT_ALPHA, beta=HOLT_BETA, steps=FORECAST_STEPS):
-    y = np.array(series, dtype=float)
-    n = len(y)
-    if n < 2:
-        return np.full(steps, y[-1]), 0.0
+# Populate Subplots
+for idx, (col, res) in enumerate(results.items()):
+    ax = fig.add_subplot(gs[idx // 2, idx % 2])
 
-    l, b = np.zeros(n), np.zeros(n)
-    l[0], b[0] = y[0], y[1] - y[0]
+    # Plot History and Forecast
+    ax.plot(hist.index, hist[col], color=res['color'], lw=2, label='Observed', zorder=3)
+    ax.plot(future_idx, res['forecast'], color=res['color'], lw=2, ls='--', label='Forecast', zorder=5)
+    ax.fill_between(future_idx, res['lower'], res['upper'], color=res['color'], alpha=0.15, label='90% CI', zorder=2)
+    
+    # Labeling and Styling
+    ax.set_title(f"{res['label']} ({res['unit']})", color='white', fontsize=14, fontweight='bold', pad=10)
+    ax.axvline(last_ts, color='white', lw=0.8, ls=':', alpha=0.5, zorder=4)
+    ax.xaxis.set_major_formatter(mdates.DateFormatter('%H:%M'))
+    ax.grid(True, alpha=0.3)
+    ax.legend(loc='upper left', fontsize=9, framealpha=0.2)
 
+# --- Add Summary Table (Similar to your reference image) ---
+ax_table = fig.add_subplot(gs[2, :])
+ax_table.axis('off')
+
+# Prepare table data
+table_data = []
+for col, res in results.items():
+    table_data.append([
+        f"{res['label']} ({res['unit']})",
+        f"{df_rs[col].iloc[-1]:.2f}",
+        f"{res['forecast'][11]:.2f}", # +1h (12 steps * 5min)
+        f"{res['forecast'][23]:.2f}", # +2h (24 steps * 5min)
+        f"{res['forecast'][47]:.2f}", # +4h (48 steps * 5min)
+        f"{res['rmse']:.3f}"
+    ])
+
+col_labels = ['Signal', 'Last Observed', 'Forecast +1h', 'Forecast +2h', 'Forecast +4h', 'RMSE']
+tbl = ax_table.table(cellText=table_data, colLabels=col_labels, loc='center', cellLoc='center')
+
+# Style the table to match the dark theme
+tbl.auto_set_font_size(False)
+tbl.set_fontsize(11)
+tbl.scale(1.0, 2.2)
+
+for (row, col), cell in tbl.get_celld().items():
+    cell.set_edgecolor('#333')
+    if row == 0:
+        cell.set_facecolor('#1a1d35') # Header color
+        cell.get_text().set_color('white')
+        cell.get_text().set_weight('bold')
+    else:
+        cell.set_facecolor('#1a1d27') # Row color
+        cell.get_text().set_color('#ddd')
+
+plt.savefig('sensor_forecast_dashboard.png', dpi=150, bbox_inches='tight', facecolor='#0f1117')
+plt.show()
     for t in range(1, n):
         l[t] = alpha * y[t] + (1 - alpha) * (l[t-1] + b[t-1])
         b[t] = beta * (l[t] - l[t-1]) + (1 - beta) * b[t-1]
