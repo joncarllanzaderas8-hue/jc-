@@ -2,7 +2,7 @@
 import numpy as np
 import pandas as pd
 
-SITE_NAME = {'A': 'Green space', 'B': 'Residential', 'C': 'Commercial'}
+SITE_NAME = {'A': 'TUP CAVITE (GREEN SPACE)', 'B': 'PALIPARAN III (RESIDENTIAL)', 'C': 'SM DASMA PALA-PALA (COMMERCIAL'}
 
 def preprocess_site(df_site: pd.DataFrame, resample_freq='5min', interp_limit=6):
     """Sort → cap humidity → AQI zero-fix (rolling median, w=5) → 5‑min median resample → interpolate ≤30 min → drop NaNs."""
