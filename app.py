@@ -54,7 +54,24 @@ with st.sidebar:
         | 42-51°C | **DANGER** | Heat stroke probable |
         | >52°C | **Extreme Danger** | Heat stroke imminent |
         """)
-        
+
+# The 'help' parameter adds the (?) icon automatically
+uploaded_file = st.file_uploader(
+    "Upload Sensor Log (CSV)", 
+    type=["csv"],
+    help="""
+    **Required CSV Format:**
+    1. **timestamp**: YYYY-MM-DD HH:MM
+    2. **tempC**: Temperature in Celsius
+    3. **humidity**: Humidity percentage (0-100)
+    4. **aqi**: Air Quality Index (optional)
+    5. **MQraw**: MQ135 sensor 
+    
+    *Note: Heat Index will be calculated automatically upon upload.*
+    """
+)
+
+
 def calculate_heat_index(temp_c, humidity):
     T = (temp_c * 9/5) + 32
     RH = humidity
