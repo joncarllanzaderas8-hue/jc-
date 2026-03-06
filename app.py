@@ -757,31 +757,82 @@ current_hi = heat_index_celsius(temp, hum)
 risk_level = label_map.get(int(model.predict([[temp, hum, aqi]])[0]), "Unknown")
 
 # -----------------------------
-# Main Display (Metrics Only)
+# Main Display (The "Big Four" Metrics)
 # -----------------------------
-# --- Restoration of AQI and Health Guides ---
+st.markdown("### 📡 Current Environmental Status")
 
-# 1. Update the Metrics Row to include AQI
+# Create 4 columns for the primary sensor data
 m1, m2, m3, m4 = st.columns(4)
-m1.metric("Temperature", f"{temp:.1f} °C")
-m2.metric("Humidity", f"{hum:.0f} %")
-m3.metric("AQI (MQ135)", f"{aqi:.1f}")  # Restored AQI here
-m4.metric("Current Risk", risk_level)
+
+with m1:
+    st.metric("Temperature", f"{temp:.1f} °C")
+with m2:
+    st.metric("Humidity", f"{hum:.0f} %")
+with m3:
+    st.metric("AQI (MQ135)", f"{aqi:.1f}", delta_color="inverse")
+with m4:
+    # RESTORED: Heat Index Calculation
+    st.metric("Heat Index", f"{current_hi:.1f} °C", help="Feels-like temperature based on PAGASA/NOAA standards")
 
 st.divider()
 
-# 2. Restored Health Guides (Decision Support)
-# This replaces the "Predictive Decision Support" section with a cleaner look
-st.subheader("📋 Health & Safety Guidance")
+# -----------------------------
+# Restored Health & Risk Guides
+# -----------------------------
+st.markdown(f"### 📋 Risk Assessment: {risk_level}")
 
+# Display the Health Guide based on the Decision Tree Prediction
 if risk_level == "Normal":
-    st.success("✅ **Normal:** Air quality and thermal conditions are stable. No special precautions needed for the general public.")
+    st.success("**Condition: Normal**\n\n✅ Air quality and heat levels are within safe limits. No special action required for the general public.")
 elif risk_level == "Moderate":
-    st.warning("⚠️ **Moderate:** Sensitive individuals (asthmatics, elderly) should consider reducing prolonged outdoor exertion. Keep area ventilated.")
+    st.warning("**Condition: Moderate Risk**\n\n⚠️ **Health Advice:** Sensitive groups (children, elderly, and those with respiratory issues) should limit heavy outdoor activities. Stay hydrated.")
 elif risk_level == "High":
-    st.error("🚨 **High Risk:** Poor environmental conditions detected. It is advised to stay indoors, close windows, and avoid strenuous outdoor activities.")
-else:
-    st.info("Searching for sensor data to provide health recommendations...")
+    st.error("**Condition: High Risk**\n\n🚨 **Health Advice:** Dangerous conditions detected. Avoid outdoor exertion. Keep windows closed if AQI is high and use cooling systems to prevent heatstroke.")
 
-# 3. PAGASA Heat Index Context
-st.caption(f"Current Heat Index Status: {pagasa_hi_category(current_hi)}")
+# -----------------------------
+# PAGASA Heat Index Reference
+# -----------------------------
+with st.expander("ℹ️ About the Heat Index (PAGASA Categories)"):
+    hi_cat = pagasa_hi_category(current_hi)
+    st.write(f"**Current Category:** {hi_cat}")
+    st.info("""
+    - **Caution (27–32°C):** Fatigue is possible with prolonged exposure.
+    - **Extreme Caution (33–41°C):** Heat cramps and heat exhaustion are possible.
+    - **Danger (42–51°C):** Heat exhaustion is likely; heat stroke is possible.
+    - **Extreme Danger (52°C+):** Heat stroke is imminent.
+    """)
+
+# -----------------------------
+# Restored AQI Health Guide
+# -----------------------------
+st.markdown("### 🌬️ Air Quality Guidance (AQI)")
+
+# Determine AQI Category for the UI
+def get_aqi_info(val):
+    if val <= 50:
+        return "Good", "✅ Air quality is satisfactory, and air pollution poses little or no risk.", "green"
+    elif val <= 100:
+        return "Moderate", "⚠️ Air quality is acceptable. However, there may be a risk for some people, particularly those who are unusually sensitive to air pollution.", "orange"
+    elif val <= 150:
+        return "Unhealthy for Sensitive Groups", "🟠 Members of sensitive groups may experience health effects. The general public is less likely to be affected.", "orange"
+    elif val <= 200:
+        return "Unhealthy", "🔴 Everyone may begin to experience health effects; members of sensitive groups may experience more serious health effects.", "red"
+    else:
+        return "Hazardous", "🚫 Health warnings of emergency conditions. The entire population is more likely to be affected.", "purple"
+
+aqi_cat, aqi_desc, aqi_col = get_aqi_info(aqi)
+
+# Display the AQI Status
+st.info(f"**Current AQI Category: {aqi_cat}**\n\n{aqi_desc}")
+
+# -----------------------------
+# Comparison Table (Optional for Quick Reference)
+# -----------------------------
+with st.expander("📊 AQI Reference Scale"):
+    st.write("This scale is used to communicate how polluted the air currently is:")
+    aqi_data = {
+        "AQI Range": ["0-50", "51-100", "101-150", "151-200", "201-300", "301+"],
+        "Level of Health Concern": ["Good", "Moderate", "Unhealthy (Sensitive)", "Unhealthy", "Very Unhealthy", "Hazardous"],
+        "Color": ["Green", "Yellow", "Orange", "Red", "Purple", "Maroon"]
+    }
+    st.table(pd.DataFrame(aqi_data))
