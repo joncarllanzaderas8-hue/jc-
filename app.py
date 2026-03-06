@@ -55,11 +55,14 @@ with st.sidebar:
         | >52°C | **Extreme Danger** | Heat stroke imminent |
         """)
 
-# 1. Sidebar Section
-with st.sidebar:
-    st.header("📤 Data Management")
+
     
-    # 2. File Uploader with the (?) help icon
+# ---------- Sidebar controls ----------
+with st.sidebar:
+    st.header("Controls")
+    uploaded = st.file_uploader("Upload sensor_log.csv", type=["csv"])
+    default_path = os.path.join("sensor_log.csv")
+# 2. File Uploader with the (?) help icon
     uploaded_file = st.file_uploader(
         "Upload Sensor Log", 
         type=["csv"],
@@ -93,14 +96,6 @@ with st.sidebar:
             data=template_df.to_csv(index=False),
             file_name="sensor_template.csv",
             mime="text/csv"
-        )
-
-    
-# ---------- Sidebar controls ----------
-with st.sidebar:
-    st.header("Controls")
-    uploaded = st.file_uploader("Upload sensor_log.csv", type=["csv"])
-    default_path = os.path.join("sensor_log.csv")
 
     auto_tune = st.checkbox(
         "Auto‑tune α, β per signal",
