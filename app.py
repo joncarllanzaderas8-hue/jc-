@@ -673,10 +673,13 @@ import plotly.graph_objects as go
 from datetime import datetime, timedelta
 from streamlit_autorefresh import st_autorefresh
 from io import BytesIO
+import plotly.graph_objects as go
+import plotly.express as px
+from plotly.subplots import make_subplots  # <--- Essential for line 744
 
 # Optional for PDF/plots
 import matplotlib
-from plotly.subplots import make_subplots
+matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 
 # ---- PDF GUARD: allow app to run even if reportlab isn't installed
