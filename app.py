@@ -172,12 +172,13 @@ def detect_sites_and_labels(df: pd.DataFrame) -> tuple[list[str], dict, dict]:
 site_codes, CODE2LABEL, LABEL2CODE = detect_sites_and_labels(raw)
 
 # ---------- Signals & helpers ----------
+# Look for this dictionary and add the last line
 signals = {
-    "tempC":    {"label": "Temperature", "unit": "°C",      "color": "#ff6b6b", "clip": (None, None)},
-    "humidity": {"label": "Humidity",    "unit": "%",       "color": "#4ecdc4", "clip": (0, 100)},
-    "heat_index": {"label": "Heat Index", "unit": "°C",     "color": "#ff8c00", "clip": (None, None)}, # <--- Add this
-    "mqRaw":    {"label": "MQ Gas Raw",  "unit": "raw",     "color": "#ffd93d", "clip": (None, None)},
-    "aqi":      {"label": "AQI",         "unit": "",        "color": "#6bcb77", "clip": (0, None)},
+    "tempC": {"label": "Temperature", "clip": [None, None]},
+    "humidity": {"label": "Humidity", "clip": [0, 100]},
+    "mqRaw": {"label": "MQ Gas Raw", "clip": [0, None]},
+    "aqi": {"label": "AQI", "clip": [0, 500]},
+    "heat_index": {"label": "Heat Index", "clip": [0, None]}  # <--- ADD THIS
 }
 if "MQ135" in raw.columns:
     signals["MQ135"] = {"label": "MQ135", "unit": " ", "color": "#a175ff", "clip": (0, None)}
