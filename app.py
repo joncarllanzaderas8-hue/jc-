@@ -126,6 +126,19 @@ if "pm25" in raw.columns:
 
 
 # ---------- Category utilities ----------
+def process_site(df: pd.DataFrame, site_code: str, steps: int,
+                 alpha: float | None, beta: float | None, auto_tune: bool):
+    # ... existing code ...
+    proc = preprocess_site(site_df)
+
+    # --- ADD THIS LINE HERE ---
+    if "tempC" in proc.columns and "humidity" in proc.columns:
+        proc["heat_index"] = proc.apply(lambda r: calculate_heat_index(r["tempC"], r["humidity"]), axis=1)
+    # ---------------------------
+
+    if proc.empty:
+        return None
+        
 def calculate_heat_index(temp_c, humidity):
     T = (temp_c * 9/5) + 32
     RH = humidity
@@ -167,18 +180,6 @@ def categorize_pm25_denr(pm25_value: float) -> tuple[str, str]:
         return ("Acutely Unhealthy", "#8f3f97")  # purple-ish
     return ("Emergency", "#7e0023")              # maroon
 
-def process_site(df: pd.DataFrame, site_code: str, steps: int,
-                 alpha: float | None, beta: float | None, auto_tune: bool):
-    # ... existing code ...
-    proc = preprocess_site(site_df)
-
-    # --- ADD THIS LINE HERE ---
-    if "tempC" in proc.columns and "humidity" in proc.columns:
-        proc["heat_index"] = proc.apply(lambda r: calculate_heat_index(r["tempC"], r["humidity"]), axis=1)
-    # ---------------------------
-
-    if proc.empty:
-        return None
     # ... rest of function ...
 
 def label_categories_vector(values: np.ndarray, scale: str) -> list[str]:
