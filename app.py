@@ -63,9 +63,6 @@ with st.sidebar:
     uploaded = st.file_uploader("Upload sensor_log.csv", type=["csv"])
     default_path = os.path.join("sensor_log.csv")
 
-        "Upload Sensor Log", 
-        type=["csv"],
-        help="""
         **Expected CSV Structure:**
         * **timestamp**: e.g., 2024-05-20 14:30
         * **tempC**: Temperature in Celsius
