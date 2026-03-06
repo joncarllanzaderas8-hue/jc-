@@ -62,8 +62,7 @@ with st.sidebar:
     st.header("Controls")
     uploaded = st.file_uploader("Upload sensor_log.csv", type=["csv"])
     default_path = os.path.join("sensor_log.csv")
-# 2. File Uploader with the (?) help icon
-    uploaded_file = st.file_uploader(
+
         "Upload Sensor Log", 
         type=["csv"],
         help="""
