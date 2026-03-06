@@ -198,4 +198,4 @@ elif tab_choice == "City map":
             layers=[layer],
             initial_view_state=pdk.ViewState(latitude=14.329, longitude=120.936, zoom=12),
             tooltip={"text": "{name}\nValue: {value}\nStatus: {category}"}
-        ))1)
+        ))
