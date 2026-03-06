@@ -58,6 +58,8 @@ with st.sidebar:
 
     
 # ---------- Sidebar controls ----------
+with st.sidebar:
+    st.header("Controls")
     auto_tune = st.checkbox(
         "Auto‑tune α, β per signal",
         value=False,
