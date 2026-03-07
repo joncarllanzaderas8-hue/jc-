@@ -288,11 +288,18 @@ def process_site(df: pd.DataFrame, site_code: str, steps: int,
 # ---------- Auto-detect sites & dynamic labels ----------
 @st.cache_data(show_spinner=False)
 def detect_sites_and_labels(df: pd.DataFrame) -> tuple[list[str], dict, dict]:
-    """
-    Returns (site_codes, code->label, label->code).
-    Uses existing SITE_NAME for known codes; for others, creates 'Site <code>'.
-    """
-    codes = list(pd.Series(df["Location"].dropna().unique()).astype(str))
+    # Check if 'Location' exists, if not, try 'Site' or the first column
+    target_col = None
+    for col in ["Location", "Site", "location", "site"]:
+        if col in df.columns:
+            target_col = col
+            break
+    
+    if target_col is None:
+        st.error(f"Could not find a location column. Available columns: {list(df.columns)}")
+        st.stop()
+
+    codes = list(pd.Series(df[target_col].dropna().unique()).astype(str))
     code_to_label = {}
     for code in codes:
         if code in SITE_NAME:
@@ -301,24 +308,6 @@ def detect_sites_and_labels(df: pd.DataFrame) -> tuple[list[str], dict, dict]:
             code_to_label[code] = f"Site {code}"
     label_to_code = {v: k for k, v in code_to_label.items()}
     return codes, code_to_label, label_to_code
-
-
-if uploaded is not None:
-    raw = pd.read_csv(uploaded)
-    raw["timestamp"] = pd.to_datetime(raw["timestamp"])
-else:
-    # Use the df_hist you loaded at the beginning of the script
-    raw = df_hist 
-
-# 2. NOW CALL THE SITE DETECTION
-if not raw.empty:
-    site_codes, CODE2LABEL, LABEL2CODE = detect_sites_and_labels(raw)
-else:
-    st.error("No data available to detect sites.")
-    st.stop()
-    
-site_codes, CODE2LABEL, LABEL2CODE = detect_sites_and_labels(raw)
-
 # ---------- Signals & helpers ----------
 signals = {
     "tempC":      {"label": "Temperature", "unit": "°C", "color": "#ff6b6b", "clip": (None, None)},
