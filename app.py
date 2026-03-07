@@ -114,30 +114,19 @@ st.set_page_config(page_title="Dasmariñas Risk Monitor", layout="wide")
 # -----------------------------
 # Data Loading & QC
 # -----------------------------
-@st.cache_data
-def load_data(path: str = "sensor_log.csv") -> pd.DataFrame:
-    if not os.path.exists(path):
-        return pd.DataFrame()
-    df = pd.read_csv(path)
-    if 'timestamp' in df.columns:
-        df['timestamp'] = pd.to_datetime(df['timestamp'], errors='coerce')
-    for c in ['aqi','mqRaw']:
-        if c in df.columns:
-            df.loc[df[c] == 0, c] = np.nan
-    return df
+uploaded = st.sidebar.file_uploader("Upload sensor_log.csv", type="csv")
 
-df_hist = load_data()
+if uploaded is not None:
+    raw = pd.read_csv(uploaded)
+    # Ensure timestamp is converted immediately
+    raw['timestamp'] = pd.to_datetime(raw['timestamp']) 
+else:
+    # Use your historical/default data so 'raw' is always defined
+    raw = df_hist if 'df_hist' in locals() else pd.DataFrame()
 
-def run_qc_only(df_in: pd.DataFrame):
-    if df_in.empty: return df_in, pd.DataFrame()
-    df = df_in.copy()
-    # Basic Thresholds
-    df['qc_issue'] = (df['tempC'] < -20) | (df['tempC'] > 60) | df['tempC'].isna()
-    # Simple summary
-    summary = df.groupby('Location').size().reset_index(name='rows')
-    return df, summary
-
-df_hist, sensors_summary = run_qc_only(df_hist)
+# Now line 304 will work because 'raw' exists!
+if not raw.empty:
+    site_codes, CODE2LABEL, LABEL2CODE = detect_sites_and_labels(raw)
 
 
 # -----------------------------
