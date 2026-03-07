@@ -82,26 +82,36 @@ if uploaded_file:
         fig = plt.figure(figsize=(15, 10))
         gs = gridspec.GridSpec(2, 2, figure=fig, hspace=0.3)
 
-        for i, col in enumerate(metrics):
-            ax = fig.add_subplot(gs[i // 2, i % 2])
-            series = df_processed[col]
-            
-            # DES Model
-            model = ExponentialSmoothing(series, trend='add').fit()
-            forecast = model.forecast(48)
-            forecast_results[col] = forecast
-            
-            # Plotting
-            ax.plot(series.tail(100).index, series.tail(100), alpha=0.3, label='History')
-            ax.plot(forecast.index, forecast, linewidth=2, label='Forecast')
-            
-            # 90% Confidence Interval
-            sigma = np.std(model.resid)
-            ax.fill_between(forecast.index, forecast - 1.645*sigma, forecast + 1.645*sigma, alpha=0.1)
-            ax.set_title(f"Forecast: {col}", loc='left')
-            ax.xaxis.set_major_formatter(mdates.DateFormatter('%H:%M'))
-
-        st.pyplot(fig)
+        for i, (col, color) in enumerate(zip(metrics, colors)):
+    ax = fig.add_subplot(gs[i // 2, i % 2])
+    series = df_processed[col]
+    
+    try:
+        # Optimized Model: Added Damping and explicit Alpha/Beta optimization
+        # This prevents the "wrong" straight lines or wild spikes
+        model = ExponentialSmoothing(
+            series, 
+            trend='add', 
+            damped_trend=True, 
+            seasonal=None 
+        ).fit(optimized=True)
+        
+        forecast = model.forecast(48)
+        forecast_dict[col] = forecast
+        
+        # Plotting History (Last 12 hours)
+        ax.plot(series.tail(144).index, series.tail(144), color=color, alpha=0.3, label='Actual')
+        
+        # Plotting Forecast
+        ax.plot(forecast.index, forecast, color=color, linewidth=2.5, linestyle='--', label='Predicted')
+        
+        # 90% Confidence Interval (The "Buffer")
+        # If the forecast is 'wrong', the buffer usually shows the uncertainty
+        sigma = np.std(model.resid)
+        ax.fill_between(forecast.index, forecast - 1.645*sigma, forecast + 1.645*sigma, color=color, alpha=0.1)
+        
+    except Exception as e:
+        st.error(f"Error in {col} forecast: {e}")
 
     with tab3:
         # Confusion Matrix Logic
