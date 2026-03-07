@@ -11,3 +11,8 @@ matplotlib
 statsmodels
 seaborn
 scikit-learn
+streamlit
+pyserial
+pandas
+numpy
+matplotlib
