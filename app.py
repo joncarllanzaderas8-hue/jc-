@@ -329,9 +329,6 @@ def calculate_heat_index(temp_c, humidity):
     
     # Convert back to Celsius
     return (hi_f - 32) * 5/9
-
-f 'Temperature' in df.columns and 'Humidity' in df.columns:
-    df['Heat Index'] = df.apply(lambda x: calculate_heat_index(x['Temperature'], x['Humidity']), axis=1)
     
 def heat_index_celsius(temp_c, rh):
     T = temp_c * 9.0/5.0 + 32.0
