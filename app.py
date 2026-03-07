@@ -242,7 +242,7 @@ if "tempC" in proc.columns and "humidity" in proc.columns:
         results = {}
         chosen = {}
 
-    for col, meta in signals.items():
+        for col, meta in signals.items():
         # --- FIX 2: NOW 'heat_index' WILL BE FOUND IN proc.columns ---
         series = proc[col].values if col in proc.columns else None
         
