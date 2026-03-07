@@ -299,8 +299,8 @@ def detect_sites_and_labels(df: pd.DataFrame) -> tuple[list[str], dict, dict]:
     label_to_code = {v: k for k, v in code_to_label.items()}
     return codes, code_to_label, label_to_code
 
-
 site_codes, CODE2LABEL, LABEL2CODE = detect_sites_and_labels(raw)
+
 # ---------- Signals & helpers ----------
 signals = {
     "tempC":      {"label": "Temperature", "unit": "°C", "color": "#ff6b6b", "clip": (None, None)},
