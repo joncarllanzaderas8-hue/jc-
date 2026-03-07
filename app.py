@@ -29,11 +29,14 @@ with st.sidebar:
         * **Alpha (Level):** How much the forecast reacts to recent data.
         * **Beta (Trend):** How much the forecast follows the upward or downward 'slope'.
         * **RMSE:** This shows the error margin. Lower is more accurate!
+        * **Residual:** Differences between actual and predicted values. If residuals are small and randomly distributed, the model fits the data well.
+        * **Confidence Interval:** 90% confidence intervals. These show the range where the future values are expected to fall.
 
         ### 4. The Map Colors
         * **Green/Yellow:** Safe levels.
         * **Orange/Red:** High Heat or Poor Air Quality.
         * **Black/Empty:** No sensor data currently reporting from that zone.
+        still in progress...
         """)
         
 with st.sidebar:
