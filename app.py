@@ -1041,4 +1041,4 @@ with st.sidebar:
     )
 
     with st.expander("👁 View Arduino Source Code"):
-        st.code(arduino_code, language="cpp")'cpp')
+        st.code(arduino_code, language="cpp")
