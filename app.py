@@ -39,35 +39,34 @@ with st.sidebar:
 with st.sidebar:
     st.divider()
     with st.expander("❓ How to read this Dashboard"):
+        # 1. First, show the Sensor Guide and Heat Index table using Markdown
         st.markdown("""
-         Sensor Guide
+        ### 📡 Sensor Guide
         * **Temp (°C):** Actual air temperature.
         * **Humidity (%):** Amount of moisture in the air.
         * **Heat Index:** The 'Real Feel' temperature (Calculated).
         * **AQI:** Air Quality Index (Lower is better).
 
-        ### Heat Index Labels
+        ### 🌡️ Heat Index Categories (PAGASA)
         | Range | Label | Precaution |
         | :--- | :--- | :--- |
         | 27-32°C | **Caution** | Fatigue possible |
         | 33-41°C | **Extreme Caution** | Heat cramps likely |
         | 42-51°C | **DANGER** | Heat stroke probable |
         | >52°C | **Extreme Danger** | Heat stroke imminent |
+
+        ### 🌬️ AQI Health Levels
+        """)
+
+        # 2. Use a real DataFrame and st.table for the AQI labels so it looks professional
+        aqi_data = {
+            "Range": ["0-50", "51-100", "101-150", "151-200", "201-300", "301+"],
+            "Health Level": ["Good", "Moderate", "Unhealthy*", "Unhealthy", "Very Unhealthy", "Hazardous"],
+            "Precaution": ["None", "Limit effort", "Reduce exertion", "Avoid outdoors", "Stay indoors", "Emergency"]
+        }
+        st.table(pd.DataFrame(aqi_data))
         
-        ### AQI Labels
-        "AQI Range": ["0-50", "51-100", "101-150", "151-200", "201-300", "301+"],
-        "Health Level": ["Good", "Moderate", "Unhealthy (Sensitive)", "Unhealthy", "Very Unhealthy", "Hazardous"],
-        "Precaution": [
-            "None", 
-            "Limit heavy outdoor effort if sensitive", 
-            "Sensitive groups should reduce exertion", 
-            "Avoid heavy outdoor activities", 
-            "Stay indoors and limit activity", 
-            "Remain indoors, keep windows closed"
-        ]
-    }
-    st.table(pd.DataFrame(aqi_table))
-""")
+        st.caption("*Unhealthy for Sensitive Groups")
 # ---------- Sidebar controls ----------
 with st.sidebar:
     st.header("Controls")
