@@ -40,11 +40,11 @@ with st.sidebar:
     st.divider()
     with st.expander("❓ How to read this Dashboard"):
         st.markdown("""
-        ### Sensor Guide
-        * **Temp (°C):** Actual air temperature.
-        * **Humidity (%):** Amount of moisture in the air.
-        * **Heat Index:** The 'Real Feel' temperature (Calculated).
-        * **AQI:** Air Quality Index (Lower is better).
+         Sensor Guide
+        Temp (°C): Actual air temperature.
+        Humidity (%): Amount of moisture in the air.
+        Heat Index: The 'Real Feel' temperature (Calculated).
+        AQI: Air Quality Index (Lower is better).
 
         ### Heat Index Labels
         | Range | Label | Precaution |
