@@ -138,11 +138,8 @@ signals = {
     "tempC":      {"label": "Temperature", "unit": "°C", "color": "#ff6b6b", "clip": (None, None)},
     "humidity":   {"label": "Humidity",    "unit": "%",  "color": "#4ecdc4", "clip": (0, 100)},
     "heat_index": {"label": "Heat Index",  "unit": "°C", "color": "#ff8c00", "clip": (None, None)}, 
-    "mqRaw":      {"label": "MQ Gas Raw",  "unit": "raw","color": "#ffd93d", "clip": (None, None)},
     "aqi":        {"label": "AQI",         "unit": "",   "color": "#6bcb77", "clip": (0, None)},
 }
-if "MQ135" in raw.columns:
-    signals["MQ135"] = {"label": "MQ135", "unit": " ", "color": "#a175ff", "clip": (0, None)}
 
 
 # ---------- Category utilities ----------
