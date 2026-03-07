@@ -111,35 +111,6 @@ def load_data(file_bytes: bytes | None, fallback_path: str) -> pd.DataFrame:
 
 raw = load_data(uploaded.getvalue() if uploaded else None, default_path)
 
-
-# ---------- Auto-detect sites & dynamic labels ----------
-@st.cache_data(show_spinner=False)
-def detect_sites_and_labels(df: pd.DataFrame) -> tuple[list[str], dict, dict]:
-    """
-    Returns (site_codes, code->label, label->code).
-    Uses existing SITE_NAME for known codes; for others, creates 'Site <code>'.
-    """
-    codes = list(pd.Series(df["Location"].dropna().unique()).astype(str))
-    code_to_label = {}
-    for code in codes:
-        if code in SITE_NAME:
-            code_to_label[code] = SITE_NAME[code]
-        else:
-            code_to_label[code] = f"Site {code}"
-    label_to_code = {v: k for k, v in code_to_label.items()}
-    return codes, code_to_label, label_to_code
-
-
-site_codes, CODE2LABEL, LABEL2CODE = detect_sites_and_labels(raw)
-
-# ---------- Signals & helpers ----------
-signals = {
-    "tempC":      {"label": "Temperature", "unit": "°C", "color": "#ff6b6b", "clip": (None, None)},
-    "humidity":   {"label": "Humidity",    "unit": "%",  "color": "#4ecdc4", "clip": (0, 100)},
-    "heat_index": {"label": "Heat Index",  "unit": "°C", "color": "#ff8c00", "clip": (27, None)}, 
-    "aqi":        {"label": "AQI",         "unit": "",   "color": "#6bcb77", "clip": (0, None)},
-}
-
 # -----------------------------
 # Restored AQI Health Guide
 # -----------------------------
@@ -174,6 +145,35 @@ with st.expander("📊 AQI Reference Scale"):
         "Color": ["Green", "Yellow", "Orange", "Red", "Purple", "Maroon"]
     }
     st.table(pd.DataFrame(aqi_data))
+
+
+# ---------- Auto-detect sites & dynamic labels ----------
+@st.cache_data(show_spinner=False)
+def detect_sites_and_labels(df: pd.DataFrame) -> tuple[list[str], dict, dict]:
+    """
+    Returns (site_codes, code->label, label->code).
+    Uses existing SITE_NAME for known codes; for others, creates 'Site <code>'.
+    """
+    codes = list(pd.Series(df["Location"].dropna().unique()).astype(str))
+    code_to_label = {}
+    for code in codes:
+        if code in SITE_NAME:
+            code_to_label[code] = SITE_NAME[code]
+        else:
+            code_to_label[code] = f"Site {code}"
+    label_to_code = {v: k for k, v in code_to_label.items()}
+    return codes, code_to_label, label_to_code
+
+
+site_codes, CODE2LABEL, LABEL2CODE = detect_sites_and_labels(raw)
+
+# ---------- Signals & helpers ----------
+signals = {
+    "tempC":      {"label": "Temperature", "unit": "°C", "color": "#ff6b6b", "clip": (None, None)},
+    "humidity":   {"label": "Humidity",    "unit": "%",  "color": "#4ecdc4", "clip": (0, 100)},
+    "heat_index": {"label": "Heat Index",  "unit": "°C", "color": "#ff8c00", "clip": (27, None)}, 
+    "aqi":        {"label": "AQI",         "unit": "",   "color": "#6bcb77", "clip": (0, None)},
+}
 
 # ---------- Category utilities ----------
 
