@@ -466,9 +466,19 @@ def process_site(df: pd.DataFrame, site_code: str, steps: int,
     if site_df.empty:
         return None
 
-    proc = preprocess_site(site_df)
+    # This calls the code from your 2nd image
+    proc = preprocess_site(site_df) 
+    
     if proc.empty:
         return None
+
+    # --- ADD THIS LOGIC HERE ---
+    # We must calculate the index AFTER preprocessing but BEFORE the forecast loop
+    if "tempC" in proc.columns and "humidity" in proc.columns:
+        proc["heat_index"] = proc.apply(
+            lambda r: calculate_heat_index(r["tempC"], r["humidity"]), axis=1
+        )
+    # ---------------------------
 
     last_ts = proc.index[-1]
     future_idx = pd.date_range(last_ts + pd.Timedelta("5min"), periods=steps, freq="5min")
@@ -477,9 +487,13 @@ def process_site(df: pd.DataFrame, site_code: str, steps: int,
     chosen = {}
 
     for col, meta in signals.items():
+        # Now 'heat_index' will be found here because we added it above
         series = proc[col].values if col in proc.columns else None
+        
         if series is None or len(series) == 0:
             continue
+        
+        # ... rest of your forecast code ...
 
         if auto_tune:
             best = tune_holt(series, steps=steps)
