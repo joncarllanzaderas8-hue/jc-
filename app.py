@@ -571,11 +571,31 @@ if tab_choice == "Single site":
             c3.metric("+2 hours", f"{fc2:.2f} {meta['unit']}" if np.isfinite(fc2) else "—")
             c4.metric("+4 hours", f"{fc4:.2f} {meta['unit']}" if np.isfinite(fc4) else "—")
 
-            # 5. Accuracy Metrics Cards
-            acc1, acc2, acc3 = st.columns(3)
-            acc1.metric("RMSE", f"{rmse_calc:.3f} {meta['unit']}")
-            acc2.metric("MAE", f"{mae_calc:.3f} {meta['unit']}")
-            acc3.metric("MAPE", f"{mape_calc:.2f} %")
+            fitted = results_site[col]["fitted"]
+            actual_vals = proc[col].iloc[:len(fitted)].values
+            rmse_calc, mae_calc, mape_calc = compute_accuracy_metrics(actual_vals, fitted)
+            
+            st.markdown("---")
+            st.subheader("🎯 Accuracy Evaluation")
+            
+            # Ito yung code para maging small at side-by-side ang metrics
+            col_a, col_b, col_c = st.columns(3)
+            
+            with col_a:
+                st.caption("RMSE")
+                st.markdown(f"#### {rmse_calc:.3f}")
+            
+            with col_b:
+                st.caption("MAE")
+                st.markdown(f"#### {mae_calc:.3f}")
+            
+            with col_c:
+                st.caption("MAPE")
+                st.markdown(f"#### {mape_calc:.2f}%")
+            
+            # Residuals section immediately after
+            if show_residuals:
+                st.write("**Residuals (Observed – Fitted)**")
             
             # 6. Residuals Section
             if show_residuals:
