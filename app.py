@@ -298,8 +298,7 @@ def detect_sites_and_labels(df: pd.DataFrame) -> tuple[list[str], dict, dict]:
             code_to_label[code] = f"Site {code}"
     label_to_code = {v: k for k, v in code_to_label.items()}
     return codes, code_to_label, label_to_code
-    if st.button("Process Data"):
-    raw = "some data"
+
 
 site_codes, CODE2LABEL, LABEL2CODE = detect_sites_and_labels(raw)
 
@@ -312,23 +311,19 @@ signals = {
 }
 
 # ---------- Category utilities ----------
-
 def calculate_heat_index(temp_c, humidity):
     """Calculates Heat Index in Celsius based on NOAA/PAGASA formula."""
     if temp_c < 27:
         return temp_c  # Heat Index is not defined below 27°C
     
-    # Convert Celsius to Fahrenheit for the standard formula
     T = (temp_c * 9/5) + 32
     R = humidity
     
-    # Rothfusz Regression Coefficients
     hi_f = (-42.379 + (2.04901523 * T) + (10.14333127 * R) - 
             (0.22475541 * T * R) - (0.00683783 * T**2) - 
             (0.05481717 * R**2) + (0.00122874 * T**2 * R) + 
             (0.00085282 * T * R**2) - (0.00000199 * T**2 * R**2))
     
-    # Convert back to Celsius
     return (hi_f - 32) * 5/9
     
 def heat_index_celsius(temp_c, rh):
@@ -347,13 +342,10 @@ def pagasa_hi_category(hi_c):
 
 def process_site(df: pd.DataFrame, site_code: str, steps: int,
                  alpha: float | None, beta: float | None, auto_tune: bool):
-    # ... existing code ...
     proc = preprocess_site(site_df)
 
-    # --- ADD THIS LINE HERE ---
     if "tempC" in proc.columns and "humidity" in proc.columns:
         proc["heat_index"] = proc.apply(lambda r: calculate_heat_index(r["tempC"], r["humidity"]), axis=1)
-    # ---------------------------
 
     if proc.empty:
         return None
@@ -382,8 +374,6 @@ def categorize_pm25_denr(pm25_value: float) -> tuple[str, str]:
         return ("Acutely Unhealthy", "#8f3f97")  # purple-ish
     return ("Emergency", "#7e0023")              # maroon
 
-    # ... rest of function ...
-
 def label_categories_vector(values: np.ndarray, scale: str) -> list[str]:
     """
     Return list of category labels for a numeric array:
@@ -403,7 +393,6 @@ def label_categories_vector(values: np.ndarray, scale: str) -> list[str]:
 def hex_to_rgb_tuple(hex_color: str) -> tuple[int, int, int]:
     h = hex_color.lstrip("#")
     return tuple(int(h[i : i + 2], 16) for i in (0, 2, 4))
-
 
 
 # ---------- Site processing ----------
@@ -498,7 +487,7 @@ def first_crossing_index(series: np.ndarray, threshold: float) -> int | None:
 # =====================================================================================
 if tab_choice == "Single site":
     site_choice = st.selectbox("Site", options=[CODE2LABEL[c] for c in site_codes])
-    site_code = LABEL2CODE[site_choice]
+    site_code = LABEL2CODE.get[site_choice]
 
     bundle = process_site(raw, site_code, steps, alpha, beta, auto_tune)
     if bundle is None:
