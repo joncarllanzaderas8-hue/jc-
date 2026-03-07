@@ -248,7 +248,7 @@ if "tempC" in proc.columns and "humidity" in proc.columns:
         
         # If the series is all NaNs (common if temp < 27°C), skip or handle
         if series is None or len(series) == 0 or np.all(np.isnan(series)):
-            continue
+            return
 
         if auto_tune:
             best = tune_holt(series, steps=steps)
