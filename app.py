@@ -969,58 +969,6 @@ else:
     st.info("Please upload a CSV file in the sidebar to begin.")
     st.warning("Note: Your CSV must contain columns: `timestamp`, `tempC`, `humidity`, `mqRaw`, and `aqi`.")
 
-import matplotlib.pyplot as plt
-import matplotlib.colors as mcolors
-
-# Assuming SIGNALS is defined somewhere in your code:
-# SIGNALS = {'tempC': ['Temperature'], 'humidity': ['Humidity'], ...}
-# If not, we can fall back to column names.
-
-st.subheader("🔗 Signal Correlation Analysis")
-
-# Calculate Correlation
-corr = df_rs.corr()
-
-# Create the figure
-fig, ax = plt.subplots(figsize=(8, 6))
-cmap = plt.cm.RdBu_r
-im = ax.imshow(corr.values, cmap=cmap, vmin=-1, vmax=1, aspect='auto')
-
-# Handle labels (using SIGNALS dict or raw column names)
-try:
-    labels = [SIGNALS[c][0] for c in corr.columns]
-except NameError:
-    labels = corr.columns
-
-ax.set_xticks(range(len(labels)))
-ax.set_xticklabels(labels, rotation=30, ha='right', fontsize=10)
-ax.set_yticks(range(len(labels)))
-ax.set_yticklabels(labels, fontsize=10)
-
-# Annotate the heatmap with correlation values
-for i in range(len(corr)):
-    for j in range(len(corr)):
-        val = corr.values[i, j]
-        ax.text(j, i, f'{val:.2f}', 
-                ha='center', va='center',
-                fontsize=11, fontweight='bold',
-                color='white' if abs(val) > 0.5 else '#aaa')
-
-# Aesthetics
-plt.colorbar(im, ax=ax, shrink=0.8)
-ax.set_title('Signal Correlation Matrix', fontsize=13, fontweight='bold', pad=12)
-
-# Set background to match Streamlit's default dark theme (optional)
-fig.patch.set_facecolor('#0e1117') 
-ax.set_facecolor('#0e1117')
-ax.title.set_color('white')
-[tick.label1.set_color('white') for tick in ax.xaxis.get_major_ticks()]
-[tick.label1.set_color('white') for tick in ax.yaxis.get_major_ticks()]
-
-plt.tight_layout()
-
-# Display in Streamlit
-st.pyplot(fig)
 
 import streamlit as st
 import pandas as pd
