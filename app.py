@@ -160,6 +160,15 @@ def calculate_heat_index(temp_c, humidity):
     
     # Convert back to Celsius
     return (hi_f - 32) * 5/9
+
+# Assuming your dataframe has 'Temperature' and 'Humidity' columns
+if 'Temperature' in df.columns and 'Humidity' in df.columns:
+    df['Heat Index'] = df.apply(
+        lambda row: calculate_heat_index(row['Temperature'], row['Humidity']), 
+        axis=1
+    )
+else:
+    st.error("Required columns (Temperature/Humidity) missing for Heat Index calculation.")
     
 def heat_index_celsius(temp_c, rh):
     T = temp_c * 9.0/5.0 + 32.0
