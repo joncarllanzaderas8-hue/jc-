@@ -593,9 +593,6 @@ if tab_choice == "Single site":
                 st.caption("MAPE")
                 st.markdown(f"#### {mape_calc:.2f}%")
             
-            # Residuals section immediately after
-            if show_residuals:
-                st.write("**Residuals (Observed – Fitted)**")
             
             # 6. Residuals Section
             if show_residuals:
