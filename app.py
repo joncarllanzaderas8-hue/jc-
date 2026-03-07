@@ -520,64 +520,41 @@ if tab_choice == "Single site":
 
     for tab, (col, meta) in zip(tabs, signals.items()):
         with tab:
+            # 1. Safety Check: Does the data exist for this specific sensor?
             if col not in proc.columns or col not in results_site:
                 st.warning(f"No data for {meta['label']} at {site_choice}.")
                 continue
 
             st.subheader(f"{site_choice} — {meta['label']}")
-            hist = proc.iloc[-12 * history_hours:]  # 12 points per hour at 5-min
+            
+            # 2. Prepare Data
+            hist = proc.iloc[-12 * history_hours:]  # 12 points per hour
+            fc = results_site[col]["forecast"]
+            fitted = results_site[col]["fitted"]
+            
+            # Calculate metrics BEFORE displaying them
+            actual_vals = proc[col].iloc[:len(fitted)].values
+            rmse_calc, mae_calc, mape_calc = compute_accuracy_metrics(actual_vals, fitted)
 
-            # Plot (history + forecast + CI)
+            # 3. Main Forecast Plot
             fig = go.Figure()
-            fig.add_trace(
-                go.Scatter(
-                    x=hist.index,
-                    y=hist[col],
-                    mode="lines",
-                    name="Observed",
-                    line=dict(color=meta["color"], width=2),
-                )
-            )
-            fig.add_trace(
-                go.Scatter(
-                    x=future_idx,
-                    y=results_site[col]["forecast"],
-                    mode="lines",
-                    name="Forecast",
-                    line=dict(color=meta["color"], width=2, dash="dash"),
-                )
-            )
-            fig.add_trace(
-                go.Scatter(
-                    x=future_idx,
-                    y=results_site[col]["upper"],
-                    mode="lines",
-                    line=dict(width=0),
-                    showlegend=False,
-                )
-            )
-            fig.add_trace(
-                go.Scatter(
-                    x=future_idx,
-                    y=results_site[col]["lower"],
-                    mode="lines",
-                    fill="tonexty",
-                    fillcolor="rgba(160,160,160,0.2)",
-                    line=dict(width=0),
-                    name="90% CI",
-                )
-            )
+            # Observed Data
+            fig.add_trace(go.Scatter(x=hist.index, y=hist[col], mode="lines", name="Observed", line=dict(color=meta["color"], width=2)))
+            # Forecasted Data
+            fig.add_trace(go.Scatter(x=future_idx, y=fc, mode="lines", name="Forecast", line=dict(color=meta["color"], width=2, dash="dash")))
+            # Confidence Intervals
+            fig.add_trace(go.Scatter(x=future_idx, y=results_site[col]["upper"], mode="lines", line=dict(width=0), showlegend=False))
+            fig.add_trace(go.Scatter(x=future_idx, y=results_site[col]["lower"], mode="lines", fill="tonexty", fillcolor="rgba(160,160,160,0.2)", line=dict(width=0), name="90% CI"))
+            
             fig.add_vline(x=last_ts, line_width=1, line_dash="dot", line_color="white")
             fig.update_layout(height=420, template="plotly_dark", margin=dict(l=20, r=20, t=30, b=10))
             st.plotly_chart(fig, use_container_width=True)
 
-            # KPIs
+            # 4. KPI Metrics Cards
             last_val = hist[col].iloc[-1]
-            fc = results_site[col]["forecast"]
             fc1 = fc[11] if len(fc) >= 12 else np.nan
             fc2 = fc[23] if len(fc) >= 24 else np.nan
             fc4 = fc[-1] if len(fc) > 0 else np.nan
-            rmse = results_site[col]["rmse"]
 
             c1, c2, c3, c4 = st.columns(4)
             c1.metric("Last observed", f"{last_val:.2f} {meta['unit']}")
@@ -585,56 +562,26 @@ if tab_choice == "Single site":
             c3.metric("+2 hours", f"{fc2:.2f} {meta['unit']}" if np.isfinite(fc2) else "—")
             c4.metric("+4 hours", f"{fc4:.2f} {meta['unit']}" if np.isfinite(fc4) else "—")
 
+            # 5. Accuracy Metrics Cards
             acc1, acc2, acc3 = st.columns(3)
             acc1.metric("RMSE", f"{rmse_calc:.3f} {meta['unit']}")
             acc2.metric("MAE", f"{mae_calc:.3f} {meta['unit']}")
             acc3.metric("MAPE", f"{mape_calc:.2f} %")
-           
-            # Residuals
-    if show_residuals:
-            st.markdown("**Residuals (Observed − Fitted One-Step Ahead)**")
-            fitted = results_site[col]["fitted"]
-            fitted_idx = proc.index[: len(fitted)]
-
-    # ----- ADD THIS PART -----
-    actual_vals = proc[col].iloc[:len(fitted)].values
-    pred_vals = fitted
-
-    rmse_calc, mae_calc, mape_calc = compute_accuracy_metrics(actual_vals, pred_vals)
-    # -------------------------
-    resid = proc[col].iloc[: len(fitted)] - pd.Series(fitted, index=fitted_idx)
-    fig_r = px.bar(
-                x=resid.index,
-                y=resid.values,
-                labels={"x": "Time", "y": "Residual"},
-                height=200,
-                template="plotly_dark",
+            
+            # 6. Residuals Section
+            if show_residuals:
+                st.markdown("**Residuals (Observed − Fitted One-Step Ahead)**")
+                fitted_idx = proc.index[: len(fitted)]
+                resid = proc[col].iloc[: len(fitted)] - pd.Series(fitted, index=fitted_idx)
+                
+                fig_r = px.bar(
+                    x=resid.index,
+                    y=resid.values,
+                    labels={"x": "Time", "y": "Residual"},
+                    height=200,
+                    template="plotly_dark",
                 )
-    st.plotly_chart(fig_r, use_container_width=True)
-
-    # ---------- Category labels & first crossing (based on selected scale) ----------
-    st.markdown("---")
-    st.subheader("Categories in the forecast (based on selected scale)")
-
-    fc_vals, fc_index, source_name = pick_category_series(bundle, cat_scale)
-    if source_name == "none" or len(fc_vals) == 0:
-        st.info("No forecast series available for the selected scale. (Tip: EPA uses AQI; DENR uses PM2.5.)")
-    else:
-        # Default threshold depends on scale: EPA USG=100; DENR USG~35
-        default_thr = 100 if cat_scale.startswith("EPA") else 35
-        thr = st.number_input(
-            f"Compute first crossing time for threshold {'AQI' if source_name=='aqi' else 'PM2.5'} >",
-            min_value=0.0, max_value=500.0, value=float(default_thr), step=1.0
-        )
-        idx = first_crossing_index(fc_vals, thr)
-        if idx is None:
-            st.info("No crossing in the next 4h.")
-        else:
-            t_cross = fc_index[idx]
-            st.success(
-                f"First crossing at **{t_cross:%Y-%m-%d %H:%M}** "
-                f"({('AQI' if source_name=='aqi' else 'PM2.5')} ~ {fc_vals[idx]:.1f})"
-            )
+                st.plotly_chart(fig_r, use_container_width=True)
 
     # ---------- Export CSV with per-step category (for selected scale) ----------
     st.markdown("---")
