@@ -18,19 +18,27 @@ with st.sidebar:
     with st.expander("📖 Dashboard User Guide"):
         st.markdown("""
         ### 1. Select Your Location
-        Use the **'Site'** dropdown to choose a specific area (e.g., Paliparan III). The map will center on this location.
+        Use the **'Site'** dropdown to choose a specific area. The map and charts will update automatically.
         
         ### 2. Choose a Metric
-        Switch between **Temperature, Humidity, Heat Index, Air Quality Index(AQI)**. 
-        * *Note: Heat Index tells you the 'Real Feel'—very important for health!*
+        Switch between **Temperature, Humidity, Heat Index, and AQI**. 
+        * *Heat Index:* Tells you the 'Real Feel'—critical for heat stroke prevention!
 
         ### 3. Understanding the Forecast
-        The graph shows **Actual Data** (dots/solid line) vs. **Holt's DES Forecast** (dashed line).
-        * **Alpha (Level):** How much the forecast reacts to recent data.
-        * **Beta (Trend):** How much the forecast follows the upward or downward 'slope'.
-        * **RMSE:** This shows the error margin. Lower is more accurate!
-        * **Residual:** Differences between actual and predicted values. If residuals are small and randomly distributed, the model fits the data well.
-        * **Confidence Interval:** 90% confidence intervals. These show the range where the future values are expected to fall.
+        The graph shows **Actual Data** (solid line) vs. **Holt's DES Forecast** (dashed line).
+        
+        **Model Parameters:**
+        * **Alpha (Level):** Controls how much the forecast reacts to the most recent data point.
+        * **Beta (Trend):** Controls how much the forecast follows the 'slope' (upward/downward trend).
+
+        **Accuracy Metrics (How good is the prediction?):**
+        * **RMSE (Root Mean Square Error):** Measures average error magnitude. It punishes large outliers. **Lower is better.**
+        * **MAE (Mean Absolute Error):** The average "off-by" amount. If MAE is 0.5, your forecast is typically off by 0.5 units.
+        * **MAPE (Mean Absolute Percentage Error):** The error as a percentage. 
+            * *Below 10%:* Excellent.
+            * *10% - 25%:* Good/Dependable.
+        * **Residuals:** The "leftover" error. If these are small and random, your model is doing a great job!
+        * **Confidence Interval:** The shaded 90% range where future values are likely to fall.
 
         ### 4. The Map Colors
         * **Green/Yellow:** Safe levels.
