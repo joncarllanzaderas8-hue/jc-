@@ -230,7 +230,7 @@ elif risk_level == "High":
 st.header("PREDICTIVE MODELLING")
 
     # --- FIX 1: CALCULATE HEAT INDEX COLUMN BEFORE FORECASTING ---
-    if "tempC" in proc.columns and "humidity" in proc.columns:
+if "tempC" in proc.columns and "humidity" in proc.columns:
     # Ensure the column name matches the key in your 'signals' dictionary
     proc["heat_index"] = proc.apply(
         lambda r: calculate_heat_index(r["tempC"], r["humidity"]), axis=1
