@@ -228,17 +228,6 @@ elif risk_level == "High":
 
 
 st.header("PREDICTIVE MODELLING")
-# ---------- Data loading ----------
-@st.cache_data(show_spinner=False)
-def process_site(df: pd.DataFrame, site_code: str, steps: int,
-                 alpha: float | None, beta: float | None, auto_tune: bool):
-    site_df = df[df["Location"] == site_code].copy()
-    if site_df.empty:
-        return None
-
-    proc = preprocess_site(site_df)
-    if proc.empty:
-        return None
 
     # --- FIX 1: CALCULATE HEAT INDEX COLUMN BEFORE FORECASTING ---
     if "tempC" in proc.columns and "humidity" in proc.columns:
@@ -330,6 +319,26 @@ def calculate_heat_index(temp_c, humidity):
             (0.00085282 * T * R**2) - (0.00000199 * T**2 * R**2))
     
     return (hi_f - 32) * 5/9
+
+# -----------------------------
+# Forecast Accuracy Metrics
+# -----------------------------
+def compute_accuracy_metrics(actual, predicted):
+    """
+    Computes RMSE, MAE, and MAPE for forecast accuracy.
+    """
+    actual = np.array(actual)
+    predicted = np.array(predicted)
+
+    error = actual - predicted
+
+    rmse = np.sqrt(np.mean(error ** 2))
+    mae = np.mean(np.abs(error))
+
+    mask = actual != 0
+    mape = np.mean(np.abs(error[mask] / actual[mask])) * 100 if np.any(mask) else np.nan
+
+    return rmse, mae, mape
     
 def heat_index_celsius(temp_c, rh):
     T = temp_c * 9.0/5.0 + 32.0
@@ -343,17 +352,6 @@ def pagasa_hi_category(hi_c):
     if hi_c <= 41: return "Extreme Caution"
     if hi_c <= 51: return "Danger"
     return "Extreme Danger"
-
-
-def process_site(df: pd.DataFrame, site_code: str, steps: int,
-                 alpha: float | None, beta: float | None, auto_tune: bool):
-    proc = preprocess_site(site_df)
-
-    if "tempC" in proc.columns and "humidity" in proc.columns:
-        proc["heat_index"] = proc.apply(lambda r: calculate_heat_index(r["tempC"], r["humidity"]), axis=1)
-
-    if proc.empty:
-        return None
 
 def categorize_pm25_denr(pm25_value: float) -> tuple[str, str]:
     """
@@ -586,14 +584,27 @@ if tab_choice == "Single site":
             c2.metric("+1 hour", f"{fc1:.2f} {meta['unit']}" if np.isfinite(fc1) else "—")
             c3.metric("+2 hours", f"{fc2:.2f} {meta['unit']}" if np.isfinite(fc2) else "—")
             c4.metric("+4 hours", f"{fc4:.2f} {meta['unit']}" if np.isfinite(fc4) else "—")
-            st.caption(f"In‑sample RMSE: {rmse:.3f} {meta['unit']}")
+
+            acc1, acc2, acc3 = st.columns(3)
+acc1.metric("RMSE", f"{rmse_calc:.3f} {meta['unit']}")
+acc2.metric("MAE", f"{mae_calc:.3f} {meta['unit']}")
+acc3.metric("MAPE", f"{mape_calc:.2f} %")
+           
 
             # Residuals
-            if show_residuals:
-                st.markdown("**Residuals (Observed − Fitted One‑Step Ahead)**")
-                fitted = results_site[col]["fitted"]
-                fitted_idx = proc.index[: len(fitted)]
-                resid = proc[col].iloc[: len(fitted)] - pd.Series(fitted, index=fitted_idx)
+             if show_residuals:
+             st.markdown("**Residuals (Observed − Fitted One-Step Ahead)**")
+             fitted = results_site[col]["fitted"]
+             fitted_idx = proc.index[: len(fitted)]
+
+    # ----- ADD THIS PART -----
+    actual_vals = proc[col].iloc[:len(fitted)].values
+    pred_vals = fitted
+
+    rmse_calc, mae_calc, mape_calc = compute_accuracy_metrics(actual_vals, pred_vals)
+    # -------------------------
+
+    resid = proc[col].iloc[: len(fitted)] - pd.Series(fitted, index=fitted_idx)
                 fig_r = px.bar(
                     x=resid.index,
                     y=resid.values,
