@@ -89,6 +89,143 @@ with st.sidebar:
     tab_choice = st.radio("View", ["Single site", "Compare sites", "City map"], index=0)
     show_residuals = st.checkbox("Show residuals panel (deep‑dive)", value=True)
 
+import os, json
+import streamlit as st
+import pandas as pd
+import numpy as np
+import joblib
+from datetime import datetime
+
+# -----------------------------
+# Page Configuration
+# -----------------------------
+st.set_page_config(page_title="Dasmariñas Risk Monitor", layout="wide")
+
+# -----------------------------
+# Data Loading & QC
+# -----------------------------
+@st.cache_data
+def load_data(path: str = "sensor_log.csv") -> pd.DataFrame:
+    if not os.path.exists(path):
+        return pd.DataFrame()
+    df = pd.read_csv(path)
+    if 'timestamp' in df.columns:
+        df['timestamp'] = pd.to_datetime(df['timestamp'], errors='coerce')
+    for c in ['aqi','mqRaw']:
+        if c in df.columns:
+            df.loc[df[c] == 0, c] = np.nan
+    return df
+
+df_hist = load_data()
+
+def run_qc_only(df_in: pd.DataFrame):
+    if df_in.empty: return df_in, pd.DataFrame()
+    df = df_in.copy()
+    # Basic Thresholds
+    df['qc_issue'] = (df['tempC'] < -20) | (df['tempC'] > 60) | df['tempC'].isna()
+    # Simple summary
+    summary = df.groupby('Location').size().reset_index(name='rows')
+    return df, summary
+
+df_hist, sensors_summary = run_qc_only(df_hist)
+
+# -----------------------------
+# Calculation Functions
+# -----------------------------
+def heat_index_celsius(temp_c, rh):
+    T = temp_c * 9.0/5.0 + 32.0
+    HI = (-42.379 + 2.049*T + 10.143*rh - 0.224*T*rh - 6.837e-3*T*T 
+          - 5.481e-2*rh*rh + 1.228e-3*T*T*rh + 8.528e-4*T*rh*rh - 1.99e-6*T*T*rh*rh)
+    return (HI - 32.0) * 5.0/9.0
+
+def pagasa_hi_category(hi_c):
+    if hi_c < 27: return "Not Hazardous"
+    if hi_c <= 32: return "Caution"
+    if hi_c <= 41: return "Extreme Caution"
+    if hi_c <= 51: return "Danger"
+    return "Extreme Danger"
+
+# -----------------------------
+# Sidebar & Model Loading
+# -----------------------------
+st.sidebar.header("📡 Settings")
+location_mode = st.sidebar.selectbox("Monitoring Site", ["A - Green Space", "B - Residential", "C - Commercial"])
+data_source = st.sidebar.radio("Data Source", ["Latest Reading", "Manual Input"])
+
+try:
+    model = joblib.load('dt_model.joblib')
+    label_map = {0: "Normal", 1: "Moderate", 2: "High"}
+except:
+    st.error("Model 'dt_model.joblib' not found.")
+    st.stop()
+
+# -----------------------------
+# Current Status Logic
+# -----------------------------
+st.title("🌿 Dasmariñas Environmental Risk Monitor")
+loc_tag = location_mode[0]
+
+if data_source == "Latest Reading":
+    recent_loc = df_hist[df_hist['Location'] == loc_tag].sort_values('timestamp')
+    if recent_loc.empty:
+        st.warning("No data for this location.")
+        st.stop()
+    current = recent_loc.tail(1).iloc[0]
+    temp, hum = float(current['tempC']), float(current['humidity'])
+    aqi = float(current['aqi']) if pd.notna(current['aqi']) else 25.0
+else:
+    temp = st.sidebar.slider("Temp (°C)", 20.0, 45.0, 30.0)
+    hum = st.sidebar.slider("Humidity (%)", 30.0, 100.0, 75.0)
+    aqi = st.sidebar.slider("AQI", 0.0, 300.0, 25.0)
+
+current_hi = heat_index_celsius(temp, hum)
+risk_level = label_map.get(int(model.predict([[temp, hum, aqi]])[0]), "Unknown")
+
+# -----------------------------
+# Main Display (The "Big Four" Metrics)
+# -----------------------------
+st.markdown("### 📡 Current Environmental Status")
+
+# Create 4 columns for the primary sensor data
+m1, m2, m3, m4 = st.columns(4)
+
+with m1:
+    st.metric("Temperature", f"{temp:.1f} °C")
+with m2:
+    st.metric("Humidity", f"{hum:.0f} %")
+with m3:
+    st.metric("AQI (MQ135)", f"{aqi:.1f}", delta_color="inverse")
+with m4:
+    # RESTORED: Heat Index Calculation
+    st.metric("Heat Index", f"{current_hi:.1f} °C", help="Feels-like temperature based on PAGASA/NOAA standards")
+
+st.divider()
+
+# -----------------------------
+# Restored Health & Risk Guides
+# -----------------------------
+st.markdown(f"### 📋 Risk Assessment: {risk_level}")
+
+# Display the Health Guide based on the Decision Tree Prediction
+if risk_level == "Normal":
+    st.success("**Condition: Normal**\n\n✅ Air quality and heat levels are within safe limits. No special action required for the general public.")
+elif risk_level == "Moderate":
+    st.warning("**Condition: Moderate Risk**\n\n⚠️ **Health Advice:** Sensitive groups (children, elderly, and those with respiratory issues) should limit heavy outdoor activities. Stay hydrated.")
+elif risk_level == "High":
+    st.error("**Condition: High Risk**\n\n🚨 **Health Advice:** Dangerous conditions detected. Avoid outdoor exertion. Keep windows closed if AQI is high and use cooling systems to prevent heatstroke.")
+
+# -----------------------------
+# PAGASA Heat Index Reference
+# -----------------------------
+with st.expander("ℹ️ About the Heat Index (PAGASA Categories)"):
+    hi_cat = pagasa_hi_category(current_hi)
+    st.write(f"**Current Category:** {hi_cat}")
+    st.info("""
+    - **Caution (27–32°C):** Fatigue is possible with prolonged exposure.
+    - **Extreme Caution (33–41°C):** Heat cramps and heat exhaustion are possible.
+    - **Danger (42–51°C):** Heat exhaustion is likely; heat stroke is possible.
+    - **Extreme Danger (52°C+):** Heat stroke is imminent.
+    """)
 
 # ---------- Data loading ----------
 @st.cache_data(show_spinner=False)
@@ -110,41 +247,6 @@ def load_data(file_bytes: bytes | None, fallback_path: str) -> pd.DataFrame:
 
 
 raw = load_data(uploaded.getvalue() if uploaded else None, default_path)
-
-# -----------------------------
-# Restored AQI Health Guide
-# -----------------------------
-st.markdown("### 🌬️ Air Quality Guidance (AQI)")
-
-# Determine AQI Category for the UI
-def get_aqi_info(val):
-    if val <= 50:
-        return "Good", "✅ Air quality is satisfactory, and air pollution poses little or no risk.", "green"
-    elif val <= 100:
-        return "Moderate", "⚠️ Air quality is acceptable. However, there may be a risk for some people, particularly those who are unusually sensitive to air pollution.", "orange"
-    elif val <= 150:
-        return "Unhealthy for Sensitive Groups", "🟠 Members of sensitive groups may experience health effects. The general public is less likely to be affected.", "orange"
-    elif val <= 200:
-        return "Unhealthy", "🔴 Everyone may begin to experience health effects; members of sensitive groups may experience more serious health effects.", "red"
-    else:
-        return "Hazardous", "🚫 Health warnings of emergency conditions. The entire population is more likely to be affected.", "purple"
-
-aqi_cat, aqi_desc, aqi_col = get_aqi_info(aqi)
-
-# Display the AQI Status
-st.info(f"**Current AQI Category: {aqi_cat}**\n\n{aqi_desc}")
-
-# -----------------------------
-# Comparison Table (Optional for Quick Reference)
-# -----------------------------
-with st.expander("📊 AQI Reference Scale"):
-    st.write("This scale is used to communicate how polluted the air currently is:")
-    aqi_data = {
-        "AQI Range": ["0-50", "51-100", "101-150", "151-200", "201-300", "301+"],
-        "Level of Health Concern": ["Good", "Moderate", "Unhealthy (Sensitive)", "Unhealthy", "Very Unhealthy", "Hazardous"],
-        "Color": ["Green", "Yellow", "Orange", "Red", "Purple", "Maroon"]
-    }
-    st.table(pd.DataFrame(aqi_data))
 
 
 # ---------- Auto-detect sites & dynamic labels ----------
@@ -747,142 +849,3 @@ st.info(
     "90% CIs; humidity clipped to [0,100] and AQI ≥ 0. Categories: EPA/AirNow AQI (0–500) or "
     "DENR PM2.5 (DAO 2020‑14), selectable at left."
 )
-
-import os, json
-import streamlit as st
-import pandas as pd
-import numpy as np
-import joblib
-from datetime import datetime
-
-# -----------------------------
-# Page Configuration
-# -----------------------------
-st.set_page_config(page_title="Dasmariñas Risk Monitor", layout="wide")
-
-# -----------------------------
-# Data Loading & QC
-# -----------------------------
-@st.cache_data
-def load_data(path: str = "sensor_log.csv") -> pd.DataFrame:
-    if not os.path.exists(path):
-        return pd.DataFrame()
-    df = pd.read_csv(path)
-    if 'timestamp' in df.columns:
-        df['timestamp'] = pd.to_datetime(df['timestamp'], errors='coerce')
-    for c in ['aqi','mqRaw']:
-        if c in df.columns:
-            df.loc[df[c] == 0, c] = np.nan
-    return df
-
-df_hist = load_data()
-
-def run_qc_only(df_in: pd.DataFrame):
-    if df_in.empty: return df_in, pd.DataFrame()
-    df = df_in.copy()
-    # Basic Thresholds
-    df['qc_issue'] = (df['tempC'] < -20) | (df['tempC'] > 60) | df['tempC'].isna()
-    # Simple summary
-    summary = df.groupby('Location').size().reset_index(name='rows')
-    return df, summary
-
-df_hist, sensors_summary = run_qc_only(df_hist)
-
-# -----------------------------
-# Calculation Functions
-# -----------------------------
-def heat_index_celsius(temp_c, rh):
-    T = temp_c * 9.0/5.0 + 32.0
-    HI = (-42.379 + 2.049*T + 10.143*rh - 0.224*T*rh - 6.837e-3*T*T 
-          - 5.481e-2*rh*rh + 1.228e-3*T*T*rh + 8.528e-4*T*rh*rh - 1.99e-6*T*T*rh*rh)
-    return (HI - 32.0) * 5.0/9.0
-
-def pagasa_hi_category(hi_c):
-    if hi_c < 27: return "Not Hazardous"
-    if hi_c <= 32: return "Caution"
-    if hi_c <= 41: return "Extreme Caution"
-    if hi_c <= 51: return "Danger"
-    return "Extreme Danger"
-
-# -----------------------------
-# Sidebar & Model Loading
-# -----------------------------
-st.sidebar.header("📡 Settings")
-location_mode = st.sidebar.selectbox("Monitoring Site", ["A - Green Space", "B - Residential", "C - Commercial"])
-data_source = st.sidebar.radio("Data Source", ["Latest Reading", "Manual Input"])
-
-try:
-    model = joblib.load('dt_model.joblib')
-    label_map = {0: "Normal", 1: "Moderate", 2: "High"}
-except:
-    st.error("Model 'dt_model.joblib' not found.")
-    st.stop()
-
-# -----------------------------
-# Current Status Logic
-# -----------------------------
-st.title("🌿 Dasmariñas Environmental Risk Monitor")
-loc_tag = location_mode[0]
-
-if data_source == "Latest Reading":
-    recent_loc = df_hist[df_hist['Location'] == loc_tag].sort_values('timestamp')
-    if recent_loc.empty:
-        st.warning("No data for this location.")
-        st.stop()
-    current = recent_loc.tail(1).iloc[0]
-    temp, hum = float(current['tempC']), float(current['humidity'])
-    aqi = float(current['aqi']) if pd.notna(current['aqi']) else 25.0
-else:
-    temp = st.sidebar.slider("Temp (°C)", 20.0, 45.0, 30.0)
-    hum = st.sidebar.slider("Humidity (%)", 30.0, 100.0, 75.0)
-    aqi = st.sidebar.slider("AQI", 0.0, 300.0, 25.0)
-
-current_hi = heat_index_celsius(temp, hum)
-risk_level = label_map.get(int(model.predict([[temp, hum, aqi]])[0]), "Unknown")
-
-# -----------------------------
-# Main Display (The "Big Four" Metrics)
-# -----------------------------
-st.markdown("### 📡 Current Environmental Status")
-
-# Create 4 columns for the primary sensor data
-m1, m2, m3, m4 = st.columns(4)
-
-with m1:
-    st.metric("Temperature", f"{temp:.1f} °C")
-with m2:
-    st.metric("Humidity", f"{hum:.0f} %")
-with m3:
-    st.metric("AQI (MQ135)", f"{aqi:.1f}", delta_color="inverse")
-with m4:
-    # RESTORED: Heat Index Calculation
-    st.metric("Heat Index", f"{current_hi:.1f} °C", help="Feels-like temperature based on PAGASA/NOAA standards")
-
-st.divider()
-
-# -----------------------------
-# Restored Health & Risk Guides
-# -----------------------------
-st.markdown(f"### 📋 Risk Assessment: {risk_level}")
-
-# Display the Health Guide based on the Decision Tree Prediction
-if risk_level == "Normal":
-    st.success("**Condition: Normal**\n\n✅ Air quality and heat levels are within safe limits. No special action required for the general public.")
-elif risk_level == "Moderate":
-    st.warning("**Condition: Moderate Risk**\n\n⚠️ **Health Advice:** Sensitive groups (children, elderly, and those with respiratory issues) should limit heavy outdoor activities. Stay hydrated.")
-elif risk_level == "High":
-    st.error("**Condition: High Risk**\n\n🚨 **Health Advice:** Dangerous conditions detected. Avoid outdoor exertion. Keep windows closed if AQI is high and use cooling systems to prevent heatstroke.")
-
-# -----------------------------
-# PAGASA Heat Index Reference
-# -----------------------------
-with st.expander("ℹ️ About the Heat Index (PAGASA Categories)"):
-    hi_cat = pagasa_hi_category(current_hi)
-    st.write(f"**Current Category:** {hi_cat}")
-    st.info("""
-    - **Caution (27–32°C):** Fatigue is possible with prolonged exposure.
-    - **Extreme Caution (33–41°C):** Heat cramps and heat exhaustion are possible.
-    - **Danger (42–51°C):** Heat exhaustion is likely; heat stroke is possible.
-    - **Extreme Danger (52°C+):** Heat stroke is imminent.
-    """)
-
