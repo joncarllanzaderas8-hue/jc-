@@ -33,7 +33,7 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-# Global Plot Styling (Matching your high-end look)
+# Global Plot Styling (Matching your code)
 plt.rcParams.update({
     'figure.facecolor': '#0f1117',
     'axes.facecolor':   '#1a1d27',
@@ -60,7 +60,7 @@ def preprocess_data(df_raw):
     df_rs = df[['tempC', 'humidity', 'mqRaw', 'aqi']].resample('5min').median()
     return df_rs.interpolate(method='time', limit=6).dropna()
 
-# --- 3. Main UI ---
+# --- 3. UI Content ---
 st.title("🌡️ Sensor Log — Professional Forecast")
 
 uploaded_file = st.sidebar.file_uploader("Upload sensor_log.csv", type=["csv"])
@@ -70,7 +70,7 @@ if uploaded_file:
     df_rs = preprocess_data(df_raw)
     last_ts = df_rs.index[-1]
 
-    # Forecast preparation
+    # Pre-calculate Forecasts to match your 'results' dictionary structure
     results = {}
     metrics_meta = {
         'tempC':   {'label': 'Temperature', 'unit': '°C', 'color': '#ff4b4b'},
@@ -91,21 +91,19 @@ if uploaded_file:
                 'lower': forecast - (1.645 * sigma)
             }
 
-    # Safe timestamp extraction for the header
     future_idx = results['tempC']['forecast'].index
-    start_time_str = last_ts.strftime("%Y-%m-%d %H:%M")
-    end_time_str = pd.to_datetime(future_idx[-1]).strftime("%H:%M")
 
     tab_eda, tab_forecast, tab_export = st.tabs(["📊 EDA", "📈 Forecasts", "📥 Export"])
 
     with tab_eda:
-        st.subheader("Correlation & Stats")
+        st.subheader("Correlation Matrix")
         fig_corr, ax_corr = plt.subplots(figsize=(10, 5))
         sns.heatmap(df_rs.corr(), annot=True, cmap='coolwarm', ax=ax_corr, cbar=False)
         st.pyplot(fig_corr)
         st.dataframe(df_rs.describe().T, use_container_width=True)
 
     with tab_forecast:
+        # --- YOUR EXACT PLOTTING CODE START ---
         HISTORY_HOURS = 6
         history_start = last_ts - pd.Timedelta(hours=HISTORY_HOURS)
         hist = df_rs[df_rs.index >= history_start]
@@ -113,7 +111,8 @@ if uploaded_file:
         fig = plt.figure(figsize=(18, 14), facecolor='#0f1117')
         fig.suptitle(
             f'Sensor Log — 4-Hour Forecast\n'
-            f'History: last {HISTORY_HOURS} h  |  {start_time_str} → {end_time_str}',
+            f'History: last {HISTORY_HOURS} h  |  '
+            f'{last_ts.strftime("%Y-%m-%d %H:%M")} → {future_idx[-1].strftime("%H:%M")}',
             color='white', fontsize=15, fontweight='bold', y=0.99)
 
         gs = gridspec.GridSpec(2, 2, figure=fig, hspace=0.50, wspace=0.32)
@@ -122,42 +121,47 @@ if uploaded_file:
             ax = fig.add_subplot(gs[idx // 2, idx % 2])
 
             # History
-            ax.plot(hist.index, hist[col], color=res['color'], lw=1.8, label='Observed', zorder=3)
+            ax.plot(hist.index, hist[col], color=res['color'], lw=1.8,
+                    label='Observed', zorder=3)
 
-            # Forecast
-            ax.plot(future_idx, res['forecast'], color=res['color'], lw=2.2, ls='--', label='Forecast', zorder=5)
+            # Forecast line
+            ax.plot(future_idx, res['forecast'], color=res['color'],
+                    lw=2.2, ls='--', label='Forecast', zorder=5)
 
             # Confidence band
-            ax.fill_between(future_idx, res['lower'], res['upper'], color=res['color'], alpha=0.18, label='90% CI', zorder=2)
+            ax.fill_between(future_idx, res['lower'], res['upper'],
+                            color=res['color'], alpha=0.18,
+                            label='90% CI', zorder=2)
 
             # NOW divider
             ax.axvline(last_ts, color='white', lw=0.8, ls=':', alpha=0.5, zorder=4)
-            # Use fixed value for vertical text placement to avoid ylim errors
             ax.text(last_ts, ax.get_ylim()[1], ' NOW', color='#888', fontsize=8, va='top')
 
             # Final value annotation
-            last_val = res['forecast'].iloc[-1]
-            last_ts_future = pd.to_datetime(future_idx[-1])
-            ax.annotate(f"{last_val:.1f} {res['unit']}",
-                        xy=(last_ts_future, last_val),
+            ax.annotate(f"{res['forecast'].iloc[-1]:.1f} {res['unit']}",
+                        xy=(future_idx[-1], res['forecast'].iloc[-1]),
                         xytext=(-48, 6), textcoords='offset points',
                         color=res['color'], fontsize=9, fontweight='bold',
                         arrowprops=dict(arrowstyle='->', color=res['color'], lw=0.8))
 
-            ax.set_title(f"{res['label']} ({res['unit']})", color='white', fontsize=13, fontweight='bold', pad=8)
+            ax.set_title(f"{res['label']}  ({res['unit']})", color='white',
+                         fontsize=13, fontweight='bold', pad=8)
+            ax.set_xlabel('Time', fontsize=9)
             ax.xaxis.set_major_formatter(mdates.DateFormatter('%H:%M'))
             ax.xaxis.set_major_locator(mdates.HourLocator(interval=1))
             plt.setp(ax.xaxis.get_majorticklabels(), rotation=30, ha='right')
-            ax.grid(True, alpha=0.15)
-            ax.legend(fontsize=8, framealpha=0.25, facecolor='#222', edgecolor='#444', labelcolor='white', loc='upper left')
+            ax.grid(True, alpha=0.1)
+            ax.legend(fontsize=8, framealpha=0.25, facecolor='#222', edgecolor='#444',
+                      labelcolor='white', loc='upper left')
 
         st.pyplot(fig)
+        # --- YOUR EXACT PLOTTING CODE END ---
 
     with tab_export:
-        st.subheader("Data Access")
+        st.subheader("Forecast Data")
         export_df = pd.DataFrame({k: v['forecast'] for k, v in results.items()})
-        st.download_button("📥 Download Forecast CSV", export_df.to_csv().encode('utf-8'), "sensor_forecast.csv", "text/csv")
+        st.download_button("📥 Download CSV", export_df.to_csv().encode('utf-8'), "sensor_forecast.csv")
         st.dataframe(export_df, use_container_width=True)
 
 else:
-    st.info("Ready for input. Please upload your `sensor_log.csv` file.")
+    st.info("Upload your `sensor_log.csv` file to begin.")
