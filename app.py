@@ -230,18 +230,18 @@ elif risk_level == "High":
 st.header("PREDICTIVE MODELLING")
 
     # --- FIX 1: CALCULATE HEAT INDEX COLUMN BEFORE FORECASTING ---
-if "tempC" in proc.columns and "humidity" in proc.columns:
+    if "tempC" in proc.columns and "humidity" in proc.columns:
     # Ensure the column name matches the key in your 'signals' dictionary
     proc["heat_index"] = proc.apply(
         lambda r: calculate_heat_index(r["tempC"], r["humidity"]), axis=1
     )
-
+    
     last_ts = proc.index[-1]
     future_idx = pd.date_range(last_ts + pd.Timedelta("5min"), periods=steps, freq="5min")
-
+    
     results = {}
     chosen = {}
-
+    
     for col, meta in signals.items():
         # --- FIX 2: NOW 'heat_index' WILL BE FOUND IN proc.columns ---
         series = proc[col].values if col in proc.columns else None
@@ -256,7 +256,7 @@ if "tempC" in proc.columns and "humidity" in proc.columns:
         else:
             a, b = alpha, beta
             res = holt_forecast(series, alpha=a, beta=b, steps=steps)
-
+    
         lo_clip, hi_clip = meta["clip"]
         if lo_clip is not None:
             res["forecast"] = np.maximum(res["forecast"], lo_clip)
@@ -264,7 +264,7 @@ if "tempC" in proc.columns and "humidity" in proc.columns:
         if hi_clip is not None:
             res["forecast"] = np.minimum(res["forecast"], hi_clip)
             res["upper"] = np.minimum(res["upper"], hi_clip)
-
+    
         results[col] = res
         chosen[col] = {"alpha": a, "beta": b, "rmse": float(res["rmse"])}
         
