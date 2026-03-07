@@ -510,15 +510,7 @@ def first_crossing_index(series: np.ndarray, threshold: float) -> int | None:
 # =====================================================================================
 if tab_choice == "Single site":
     site_choice = st.selectbox("Site", options=[CODE2LABEL[c] for c in site_codes])
-site_code = LABEL2CODE.get(site_choice)
-
-if site_code is None:
-    st.warning(f"Could not find code for {site_choice}. Defaulting to first available site.")
-    if site_codes:
-        site_code = site_codes[0]
-    else:
-        st.error("No sites detected in data.")
-        st.stop()
+    site_code = LABEL2CODE[site_choice]
 
     bundle = process_site(raw, site_code, steps, alpha, beta, auto_tune)
     if bundle is None:
