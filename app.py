@@ -146,6 +146,48 @@ if "MQ135" in raw.columns:
 
 
 # ---------- Category utilities ----------
+@st.cache_data
+def load_data(path: str = "sensor_log.csv") -> pd.DataFrame:
+    if not os.path.exists(path):
+        return pd.DataFrame()
+    df = pd.read_csv(path)
+    if 'timestamp' in df.columns:
+        df['timestamp'] = pd.to_datetime(df['timestamp'], errors='coerce')
+    for c in ['aqi','mqRaw']:
+        if c in df.columns:
+            df.loc[df[c] == 0, c] = np.nan
+    return df
+
+df_hist = load_data()
+
+def run_qc_only(df_in: pd.DataFrame):
+    if df_in.empty: return df_in, pd.DataFrame()
+    df = df_in.copy()
+    # Basic Thresholds
+    df['qc_issue'] = (df['tempC'] < -20) | (df['tempC'] > 60) | df['tempC'].isna()
+    # Simple summary
+    summary = df.groupby('Location').size().reset_index(name='rows')
+    return df, summary
+
+df_hist, sensors_summary = run_qc_only(df_hist)
+
+# -----------------------------
+# Calculation Functions
+# -----------------------------
+def heat_index_celsius(temp_c, rh):
+    T = temp_c * 9.0/5.0 + 32.0
+    HI = (-42.379 + 2.049*T + 10.143*rh - 0.224*T*rh - 6.837e-3*T*T 
+          - 5.481e-2*rh*rh + 1.228e-3*T*T*rh + 8.528e-4*T*rh*rh - 1.99e-6*T*T*rh*rh)
+    return (HI - 32.0) * 5.0/9.0
+
+def pagasa_hi_category(hi_c):
+    if hi_c < 27: return "Not Hazardous"
+    if hi_c <= 32: return "Caution"
+    if hi_c <= 41: return "Extreme Caution"
+    if hi_c <= 51: return "Danger"
+    return "Extreme Danger"
+
+
 def process_site(df: pd.DataFrame, site_code: str, steps: int,
                  alpha: float | None, beta: float | None, auto_tune: bool):
     # ... existing code ...
