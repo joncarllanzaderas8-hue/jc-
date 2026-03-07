@@ -262,24 +262,63 @@ with st.expander("📊 AQI Reference Scale"):
 st.header("PREDICTIVE MODELLING")
 # ---------- Data loading ----------
 @st.cache_data(show_spinner=False)
-def load_data(file_bytes: bytes | None, fallback_path: str) -> pd.DataFrame:
-    if file_bytes is not None:
-        df = pd.read_csv(io.BytesIO(file_bytes))
-    else:
-        if not os.path.exists(fallback_path):
-            st.error(f"CSV not found at {fallback_path}. Upload a file or place it under data/ as sensor_log.csv.")
-            st.stop()
-        df = pd.read_csv(fallback_path)
+def process_site(df: pd.DataFrame, site_code: str, steps: int,
+                 alpha: float | None, beta: float | None, auto_tune: bool):
+    site_df = df[df["Location"] == site_code].copy()
+    if site_df.empty:
+        return None
 
-    if "timestamp" not in df.columns:
-        st.error("Missing 'timestamp' column in CSV.")
-        st.stop()
+    proc = preprocess_site(site_df)
+    if proc.empty:
+        return None
 
-    df["timestamp"] = pd.to_datetime(df["timestamp"])
-    return df
+    # --- FIX 1: CALCULATE HEAT INDEX COLUMN BEFORE FORECASTING ---
+    if "tempC" in proc.columns and "humidity" in proc.columns:
+        # We ensure the column name matches the key in your 'signals' dictionary
+        proc["heat_index"] = proc.apply(
+            lambda r: calculate_heat_index(r["tempC"], r["humidity"]), axis=1
+        )
 
+    last_ts = proc.index[-1]
+    future_idx = pd.date_range(last_ts + pd.Timedelta("5min"), periods=steps, freq="5min")
 
-raw = load_data(uploaded.getvalue() if uploaded else None, default_path)
+    results = {}
+    chosen = {}
+
+    for col, meta in signals.items():
+        # --- FIX 2: NOW 'heat_index' WILL BE FOUND IN proc.columns ---
+        series = proc[col].values if col in proc.columns else None
+        
+        # If the series is all NaNs (common if temp < 27°C), skip or handle
+        if series is None or len(series) == 0 or np.all(np.isnan(series)):
+            continue
+
+        if auto_tune:
+            best = tune_holt(series, steps=steps)
+            a, b = best["alpha"], best["beta"]
+            res = best["model"]
+        else:
+            a, b = alpha, beta
+            res = holt_forecast(series, alpha=a, beta=b, steps=steps)
+
+        lo_clip, hi_clip = meta["clip"]
+        if lo_clip is not None:
+            res["forecast"] = np.maximum(res["forecast"], lo_clip)
+            res["lower"] = np.maximum(res["lower"], lo_clip)
+        if hi_clip is not None:
+            res["forecast"] = np.minimum(res["forecast"], hi_clip)
+            res["upper"] = np.minimum(res["upper"], hi_clip)
+
+        results[col] = res
+        chosen[col] = {"alpha": a, "beta": b, "rmse": float(res["rmse"])}
+
+    return {
+        "proc": proc,
+        "last_ts": last_ts,
+        "future_idx": future_idx,
+        "results": results,
+        "chosen": chosen,
+    }
 
 
 # ---------- Auto-detect sites & dynamic labels ----------
