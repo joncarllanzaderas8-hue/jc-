@@ -977,3 +977,56 @@ else:
 for i in range(100):
     # Do some work here
     time.sleep(0.1)  # All lines inside the 'for' must line up
+
+#include <DHT.h>
+
+#define DHT_PIN     2
+#define DHT_TYPE    DHT22
+#define MQ_PIN      A0
+#define INTERVAL_MS 5000   // send every 5 seconds
+
+DHT dht(DHT_PIN, DHT_TYPE);
+unsigned long lastSend = 0;
+
+void setup() {
+  Serial.begin(9600);
+  dht.begin();
+}
+
+void loop() {
+  if (millis() - lastSend < INTERVAL_MS) return;
+  lastSend = millis();
+
+  float tempC    = dht.readTemperature();
+  float humidity = dht.readHumidity();
+  int   mqRaw    = analogRead(MQ_PIN);
+
+  // Simple AQI proxy — calibrate to your sensor
+  float aqi = (mqRaw - 100) * 0.12;
+  if (aqi < 0) aqi = 0;
+
+  if (isnan(tempC) || isnan(humidity)) return;  // skip bad reads
+
+  Serial.print('{');
+  Serial.print("\\"tempC\\":"); Serial.print(tempC, 1); Serial.print(',');
+  Serial.print("\\"humidity\\":"); Serial.print(humidity, 1); Serial.print(',');
+  Serial.print("\\"mqRaw\\":"); Serial.print(mqRaw); Serial.print(',');
+  Serial.print("\\"aqi\\":"); Serial.print(aqi, 1);
+  Serial.println('}');
+}
+"""
+
+# 2. Create the UI elements
+st.subheader("Sensor Setup")
+st.write("Download the Arduino sketch below to program your hardware (DHT22 + MQ Sensor).")
+
+st.download_button(
+    label="Download Arduino Code (.ino)",
+    data=arduino_code,
+    file_name="dasmarinas_sensor_node.ino",
+    mime="text/plain",
+)
+
+# 3. Optional: Show the code in an expandable box
+with st.expander("View Source Code"):
+    st.code(arduino_code, language='cpp')
