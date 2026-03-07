@@ -230,51 +230,52 @@ elif risk_level == "High":
 st.header("PREDICTIVE MODELLING")
 
     # --- FIX 1: CALCULATE HEAT INDEX COLUMN BEFORE FORECASTING ---
-if "tempC" in proc.columns and "humidity" in proc.columns:
-    # Ensure the column name matches the key in your 'signals' dictionary
-    proc["heat_index"] = proc.apply(
-        lambda r: calculate_heat_index(r["tempC"], r["humidity"]), axis=1
-    )
-    
-    last_ts = proc.index[-1]
-    future_idx = pd.date_range(last_ts + pd.Timedelta("5min"), periods=steps, freq="5min")
-    
-    results = {}
-    chosen = {}
-    
-    for col, meta in signals.items():
-        # --- FIX 2: NOW 'heat_index' WILL BE FOUND IN proc.columns ---
-        series = proc[col].values if col in proc.columns else None
-        
-        if series is None or len(series) == 0 or np.all(np.isnan(series)):
-            continue  
+def your_forecast_function(proc, signals, steps, auto_tune, alpha, beta):
+    # This whole block must be indented at least 4 spaces
+    if "tempC" in proc.columns and "humidity" in proc.columns:
+        proc["heat_index"] = proc.apply(
+            lambda r: calculate_heat_index(r["tempC"], r["humidity"]), axis=1
+        )
+
+        last_ts = proc.index[-1]
+        future_idx = pd.date_range(last_ts + pd.Timedelta("5min"), periods=steps, freq="5min")
+
+        results = {}
+        chosen = {}
+
+        for col, meta in signals.items():
+            series = proc[col].values if col in proc.columns else None
             
-        if auto_tune:
-            best = tune_holt(series, steps=steps)
-            a, b = best["alpha"], best["beta"]
-            res = best["model"]
-        else:
-            a, b = alpha, beta
-            res = holt_forecast(series, alpha=a, beta=b, steps=steps)
-    
-        lo_clip, hi_clip = meta["clip"]
-        if lo_clip is not None:
-            res["forecast"] = np.maximum(res["forecast"], lo_clip)
-            res["lower"] = np.maximum(res["lower"], lo_clip)
-        if hi_clip is not None:
-            res["forecast"] = np.minimum(res["forecast"], hi_clip)
-            res["upper"] = np.minimum(res["upper"], hi_clip)
-    
-        results[col] = res
-        chosen[col] = {"alpha": a, "beta": b, "rmse": float(res["rmse"])}
-        
+            if series is None or len(series) == 0 or np.all(np.isnan(series)):
+                continue 
+
+            if auto_tune:
+                best = tune_holt(series, steps=steps)
+                a, b = best["alpha"], best["beta"]
+                res = best["model"]
+            else:
+                a, b = alpha, beta
+                res = holt_forecast(series, alpha=a, beta=b, steps=steps)
+
+            lo_clip, hi_clip = meta["clip"]
+            if lo_clip is not None:
+                res["forecast"] = np.maximum(res["forecast"], lo_clip)
+                res["lower"] = np.maximum(res["lower"], lo_clip)
+            if hi_clip is not None:
+                res["forecast"] = np.minimum(res["forecast"], hi_clip)
+                res["upper"] = np.minimum(res["upper"], hi_clip)
+
+            results[col] = res
+            chosen[col] = {"alpha": a, "beta": b, "rmse": float(res["rmse"])}
+
+        # This return must be indented to align with the 'if' above
         return {
-        "proc": proc,
-        "last_ts": last_ts,
-        "future_idx": future_idx,
-        "results": results,
-        "chosen": chosen,
-    }
+            "proc": proc,
+            "last_ts": last_ts,
+            "future_idx": future_idx,
+            "results": results,
+            "chosen": chosen,
+        }
 # ---------- Auto-detect sites & dynamic labels ----------
 @st.cache_data(show_spinner=False)
 def detect_sites_and_labels(df: pd.DataFrame) -> tuple[list[str], dict, dict]:
