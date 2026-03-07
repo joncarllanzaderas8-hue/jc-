@@ -244,7 +244,7 @@ if "tempC" in proc.columns and "humidity" in proc.columns:
 
         for col, meta in signals.items():
         # --- FIX 2: NOW 'heat_index' WILL BE FOUND IN proc.columns ---
-        series = proc[col].values if col in proc.columns else None
+            series = proc[col].values if col in proc.columns else None
         
         # If the series is all NaNs (common if temp < 27°C), skip or handle
         if series is None or len(series) == 0 or np.all(np.isnan(series)):
