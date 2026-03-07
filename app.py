@@ -11,7 +11,7 @@ import warnings
 st.set_page_config(page_title="Sensor Forecasting Dashboard", layout="wide")
 warnings.filterwarnings('ignore')
 
-# --- Custom Styling (Matching Notebook) ---
+# --- Custom Styling ---
 plt.rcParams.update({
     'figure.facecolor': '#0f1117',
     'axes.facecolor':   '#1a1d27',
@@ -27,108 +27,83 @@ plt.rcParams.update({
 })
 
 # --- Title ---
-st.title("🌡️ Sensor Log — 4-Hour Forecasting Dashboard")
-st.markdown("""
-> **Method:** Holt's Double Exponential Smoothing (DES)  
-> **Preprocessing:** sort, humidity cap, AQI zero-fix, 5-min resampling, gap interpolation  
-> **Forecast horizon:** 48 steps × 5 min = **4 hours** with 90% confidence intervals
-""")
+st.title("🌡️ Sensor Log — 4-Hour Forecasting")
 
 # --- Sidebar: Data Loading ---
 st.sidebar.header("Data Settings")
 uploaded_file = st.sidebar.file_uploader("Upload sensor_log.csv", type=["csv"])
 
 def preprocess_data(df_raw):
-    df = df_raw.copy()
-    df['timestamp'] = pd.to_datetime(df['timestamp'], format='mixed')
-    
-    # 1. Sort
-    df = df.sort_values('timestamp').reset_index(drop=True)
-    
-    # 2. Humidity Cap
-    df['humidity'] = df['humidity'].clip(upper=100)
-    
-    # 3. AQI Zero-fix
-    rolling_med = df['aqi'].rolling(5, center=True, min_periods=1).median()
-    df['aqi'] = np.where(df['aqi'] == 0, rolling_med, df['aqi'])
-    
-    # 4. Resample to 5min
-    df = df.set_index('timestamp')
-    df_rs = df[['tempC', 'humidity', 'mqRaw', 'aqi']].resample('5min').median()
-    
-    # 5. Interpolate (limit 6 steps = 30 mins)
-    df_rs = df_rs.interpolate(method='time', limit=6).dropna()
-    return df_rs
+    try:
+        df = df_raw.copy()
+        # Handle mixed date formats safely
+        df['timestamp'] = pd.to_datetime(df['timestamp'], errors='coerce')
+        df = df.dropna(subset=['timestamp']).sort_values('timestamp')
+        
+        # Preprocessing logic from notebook
+        df['humidity'] = df['humidity'].clip(upper=100)
+        df['aqi'] = df['aqi'].replace(0, np.nan).ffill().fillna(0)
+        
+        df = df.set_index('timestamp')
+        # Resample to 5min and interpolate gaps (max 30 mins)
+        df_rs = df[['tempC', 'humidity', 'mqRaw', 'aqi']].resample('5min').mean()
+        df_rs = df_rs.interpolate(method='linear', limit=6).dropna()
+        return df_rs
+    except Exception as e:
+        st.error(f"Error processing data: {e}")
+        return pd.DataFrame()
 
 if uploaded_file is not None:
     df_raw = pd.read_csv(uploaded_file)
     df_processed = preprocess_data(df_raw)
     
-    # --- UI: Metrics ---
-    last_ts = df_processed.index[-1]
-    cols = st.columns(4)
-    cols[0].metric("Latest Temp", f"{df_processed['tempC'].iloc[-1]:.1f}°C")
-    cols[1].metric("Latest Humidity", f"{df_processed['humidity'].iloc[-1]:.1f}%")
-    cols[2].metric("Latest AQI", f"{df_processed['aqi'].iloc[-1]:.1f}")
-    cols[3].metric("Last Sync", last_ts.strftime('%H:%M'))
+    if not df_processed.empty:
+        # --- UI: Metrics ---
+        last_ts = df_processed.index[-1]
+        cols = st.columns(4)
+        cols[0].metric("Temp", f"{df_processed['tempC'].iloc[-1]:.1f}°C")
+        cols[1].metric("Humidity", f"{df_processed['humidity'].iloc[-1]:.1f}%")
+        cols[2].metric("AQI", f"{df_processed['aqi'].iloc[-1]:.0f}")
+        cols[3].metric("Last Update", last_ts.strftime('%H:%M'))
 
-    # --- Forecasting Logic ---
-    forecast_steps = 48  # 4 hours
-    results = {}
-    
-    for col in ['tempC', 'humidity', 'mqRaw', 'aqi']:
-        series = df_processed[col]
-        # Fit Holt's Linear (DES)
-        model = ExponentialSmoothing(series, trend='add', seasonal=None).fit()
-        forecast = model.forecast(forecast_steps)
-        
-        # Calculate naive 90% Confidence Interval (Std Dev of residuals)
-        residuals = model.resid
-        sigma = np.std(residuals)
-        margin = 1.645 * sigma  # 90% CI
-        
-        results[col] = {
-            'history': series,
-            'forecast': forecast,
-            'upper': forecast + margin,
-            'lower': forecast - margin
-        }
+        # --- Forecasting & Plotting ---
+        try:
+            fig = plt.figure(figsize=(14, 10))
+            gs = gridspec.GridSpec(2, 2, figure=fig, hspace=0.3, wspace=0.2)
+            
+            metrics_info = [
+                ('tempC', 'Temperature (°C)', '#ff4b4b', gs[0, 0]),
+                ('humidity', 'Humidity (%)', '#1f77b4', gs[0, 1]),
+                ('mqRaw', 'Gas Sensor (Raw)', '#00d4a1', gs[1, 0]),
+                ('aqi', 'AQI Index', '#ffaa00', gs[1, 1])
+            ]
 
-    # --- Plotting ---
-    fig = plt.figure(figsize=(14, 10))
-    gs = gridspec.GridSpec(2, 2, figure=fig, hspace=0.3, wspace=0.2)
-    
-    metrics_info = [
-        ('tempC', 'Temperature (°C)', '#ff4b4b', gs[0, 0]),
-        ('humidity', 'Humidity (%)', '#1f77b4', gs[0, 1]),
-        ('mqRaw', 'Gas Sensor (Raw)', '#00d4a1', gs[1, 0]),
-        ('aqi', 'AQI Index', '#ffaa00', gs[1, 1])
-    ]
+            for key, title, color, spec in metrics_info:
+                ax = fig.add_subplot(spec)
+                series = df_processed[key]
+                
+                # Fit Model
+                model = ExponentialSmoothing(series, trend='add').fit()
+                forecast = model.forecast(48) # 4 hours
+                
+                # Plotting
+                ax.plot(series.tail(100).index, series.tail(100), color=color, alpha=0.4)
+                ax.plot(forecast.index, forecast, color=color, linewidth=2, label='Forecast')
+                
+                ax.set_title(title, loc='left', color='#ddd')
+                ax.xaxis.set_major_formatter(mdates.DateFormatter('%H:%M'))
+                ax.spines['top'].set_visible(False)
+                ax.spines['right'].set_visible(False)
 
-    for key, title, color, spec in metrics_info:
-        ax = fig.add_subplot(spec)
-        data = results[key]
-        
-        # Plot last 12 hours of history (144 points)
-        hist_display = data['history'].tail(144)
-        ax.plot(hist_display.index, hist_display, color=color, alpha=0.4, label='Historical')
-        
-        # Plot Forecast
-        ax.plot(data['forecast'].index, data['forecast'], color=color, linewidth=2.5, label='Forecast (4h)')
-        ax.fill_between(data['forecast'].index, data['lower'], data['upper'], color=color, alpha=0.15)
-        
-        # Formatting
-        ax.set_title(title, loc='left', fontsize=12, fontweight='bold', pad=10)
-        ax.xaxis.set_major_formatter(mdates.DateFormatter('%H:%M'))
-        ax.grid(True, axis='y', linestyle='--', alpha=0.3)
-        ax.spines['top'].set_visible(False)
-        ax.spines['right'].set_visible(False)
-
-    st.pyplot(fig)
-
-    # --- Data Table ---
-    with st.expander("View Processed Data"):
-        st.dataframe(df_processed.tail(20), use_container_width=True)
-
+            st.pyplot(fig)
+            
+            # Updated Table syntax for 2026 Streamlit versions
+            st.subheader("Raw Data Preview")
+            st.dataframe(df_processed.tail(10), width="100%") 
+            
+        except Exception as e:
+            st.error(f"Error generating forecast: {e}")
+    else:
+        st.warning("Processed data is empty. Check your CSV format.")
 else:
-    st.info("Please upload a `sensor_log.csv` file to start the dashboard.")
+    st.info("👋 Awaiting CSV upload...")
