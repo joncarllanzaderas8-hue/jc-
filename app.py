@@ -53,31 +53,8 @@ with st.sidebar:
         | 33-41°C | **Extreme Caution** | Heat cramps likely |
         | 42-51°C | **DANGER** | Heat stroke probable |
         | >52°C | **Extreme Danger** | Heat stroke imminent |
-        """)
-
-st.divider()
-st.markdown("### 🌬️ Air Quality Guidance (AQI)")
-
-def get_aqi_info(val):
-    if val <= 50:
-        return "Good", "✅ Air quality is satisfactory, and air pollution poses little or no risk.", "green"
-    elif val <= 100:
-        return "Moderate", "⚠️ Air quality is acceptable. However, there may be a risk for some people, particularly those who are unusually sensitive to air pollution.", "orange"
-    elif val <= 150:
-        return "Unhealthy for Sensitive Groups", "🟠 Members of sensitive groups may experience health effects. The general public is less likely to be affected.", "orange"
-    elif val <= 200:
-        return "Unhealthy", "🔴 Everyone may begin to experience health effects; members of sensitive groups may experience more serious health effects.", "red"
-    else:
-        return "Hazardous", "🚫 Health warnings of emergency conditions. The entire population is more likely to be affected.", "purple"
-
-# Fetch info based on current aqi variable
-aqi_cat, aqi_desc, aqi_col = get_aqi_info(aqi)
-
-# Display a stylized status card
-st.info(f"**Current Category: {aqi_cat}**\n\n{aqi_desc}")
-
-with st.expander("📊 View Full AQI Reference Scale"):
-    aqi_table = {
+        
+        ### AQI Labels
         "AQI Range": ["0-50", "51-100", "101-150", "151-200", "201-300", "301+"],
         "Health Level": ["Good", "Moderate", "Unhealthy (Sensitive)", "Unhealthy", "Very Unhealthy", "Hazardous"],
         "Precaution": [
@@ -90,7 +67,7 @@ with st.expander("📊 View Full AQI Reference Scale"):
         ]
     }
     st.table(pd.DataFrame(aqi_table))
-
+)
     
 # ---------- Sidebar controls ----------
 with st.sidebar:
