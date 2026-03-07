@@ -586,16 +586,15 @@ if tab_choice == "Single site":
             c4.metric("+4 hours", f"{fc4:.2f} {meta['unit']}" if np.isfinite(fc4) else "—")
 
             acc1, acc2, acc3 = st.columns(3)
-acc1.metric("RMSE", f"{rmse_calc:.3f} {meta['unit']}")
-acc2.metric("MAE", f"{mae_calc:.3f} {meta['unit']}")
-acc3.metric("MAPE", f"{mape_calc:.2f} %")
+            acc1.metric("RMSE", f"{rmse_calc:.3f} {meta['unit']}")
+            acc2.metric("MAE", f"{mae_calc:.3f} {meta['unit']}")
+            acc3.metric("MAPE", f"{mape_calc:.2f} %")
            
-
             # Residuals
-             if show_residuals:
-             st.markdown("**Residuals (Observed − Fitted One-Step Ahead)**")
-             fitted = results_site[col]["fitted"]
-             fitted_idx = proc.index[: len(fitted)]
+            if show_residuals:
+            st.markdown("**Residuals (Observed − Fitted One-Step Ahead)**")
+            fitted = results_site[col]["fitted"]
+            fitted_idx = proc.index[: len(fitted)]
 
     # ----- ADD THIS PART -----
     actual_vals = proc[col].iloc[:len(fitted)].values
