@@ -226,24 +226,11 @@ elif risk_level == "High":
 st.header("PREDICTIVE MODELLING")
 # ---------- Data loading ----------
 @st.cache_data(show_spinner=False)
-def load_data(file_bytes: bytes | None, fallback_path: str) -> pd.DataFrame:
-    if file_bytes is not None:
-        df = pd.read_csv(io.BytesIO(file_bytes))
-    else:
-        if not os.path.exists(fallback_path):
-            st.error(f"CSV not found at {fallback_path}. Upload a file or place it under data/ as sensor_log.csv.")
-            st.stop()
-        df = pd.read_csv(fallback_path)
-
-    if "timestamp" not in df.columns:
-        st.error("Missing 'timestamp' column in CSV.")
-        st.stop()
-
-    df["timestamp"] = pd.to_datetime(df["timestamp"])
-    return df
-
-
-raw = load_data(uploaded.getvalue() if uploaded else None, default_path)
+def process_site(df: pd.DataFrame, site_code: str, steps: int,
+                 alpha: float | None, beta: float | None, auto_tune: bool):
+    site_df = df[df["Location"] == site_code].copy()
+    if site_df.empty:
+        return None
 
     proc = preprocess_site(site_df)
     if proc.empty:
