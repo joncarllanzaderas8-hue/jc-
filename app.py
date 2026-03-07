@@ -55,6 +55,30 @@ with st.sidebar:
         | >52°C | **Extreme Danger** | Heat stroke imminent |
         """)
 
+st.divider()
+st.markdown("### 🌬️ Air Quality Guidance (AQI)")
+
+# Fetch info based on current aqi variable
+aqi_cat, aqi_desc, aqi_col = get_aqi_info(aqi)
+
+# Display a stylized status card
+st.info(f"**Current Category: {aqi_cat}**\n\n{aqi_desc}")
+
+with st.expander("📊 View Full AQI Reference Scale"):
+    aqi_table = {
+        "AQI Range": ["0-50", "51-100", "101-150", "151-200", "201-300", "301+"],
+        "Health Level": ["Good", "Moderate", "Unhealthy (Sensitive)", "Unhealthy", "Very Unhealthy", "Hazardous"],
+        "Precaution": [
+            "None", 
+            "Limit heavy outdoor effort if sensitive", 
+            "Sensitive groups should reduce exertion", 
+            "Avoid heavy outdoor activities", 
+            "Stay indoors and limit activity", 
+            "Remain indoors, keep windows closed"
+        ]
+    }
+    st.table(pd.DataFrame(aqi_table))
+
     
 # ---------- Sidebar controls ----------
 with st.sidebar:
