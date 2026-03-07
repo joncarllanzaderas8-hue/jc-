@@ -80,11 +80,11 @@ with st.sidebar:
     )
 
     cat_scale = st.selectbox(
-        "Category scale",
-        ["EPA AQI (uses AQI value)", "DENR PM2.5 (uses PM2.5 concentration)"],
-        index=0,
-        help="EPA uses the AQI value (0–500); DENR uses PM2.5 μg/m³ (DAO 2020‑14).",
-    )
+    "Category scale",
+    ["EPA AQI (uses AQI value)", "PAGASA Heat Index (Celsius)"],
+    index=0,
+    help="EPA uses the AQI value (0-500); PAGASA uses the Heat Index categories (Caution to Extreme Danger)."
+)
 
     tab_choice = st.radio("View", ["Single site", "Compare sites", "City map"], index=0)
     show_residuals = st.checkbox("Show residuals panel (deep‑dive)", value=True)
