@@ -60,18 +60,16 @@ st.markdown("### 🌬️ Air Quality Guidance (AQI)")
 
 def get_aqi_info(val):
     if val <= 50:
-        return "Good", "✅ Air quality is satisfactory; air pollution poses little or no risk.", "#00e400"
+        return "Good", "✅ Air quality is satisfactory, and air pollution poses little or no risk.", "green"
     elif val <= 100:
-        return "Moderate", "⚠️ Air quality is acceptable. Sensitive individuals should limit prolonged outdoor exertion.", "#ffff00"
+        return "Moderate", "⚠️ Air quality is acceptable. However, there may be a risk for some people, particularly those who are unusually sensitive to air pollution.", "orange"
     elif val <= 150:
-        return "Unhealthy for Sensitive Groups", "🟠 Members of sensitive groups may experience health effects.", "#ff7e00"
+        return "Unhealthy for Sensitive Groups", "🟠 Members of sensitive groups may experience health effects. The general public is less likely to be affected.", "orange"
     elif val <= 200:
-        return "Unhealthy", "🔴 Everyone may begin to experience health effects.", "#ff0000"
-    elif val <= 300:
-        return "Very Unhealthy", "🟣 Health alert: everyone may experience more serious health effects.", "#8f3f97"
+        return "Unhealthy", "🔴 Everyone may begin to experience health effects; members of sensitive groups may experience more serious health effects.", "red"
     else:
-        return "Hazardous", "🚫 Health warning of emergency conditions.", "#7e0023"
-        
+        return "Hazardous", "🚫 Health warnings of emergency conditions. The entire population is more likely to be affected.", "purple"
+
 # Fetch info based on current aqi variable
 aqi_cat, aqi_desc, aqi_col = get_aqi_info(aqi)
 
@@ -249,53 +247,6 @@ elif risk_level == "Moderate":
 elif risk_level == "High":
     st.error("**Condition: High Risk**\n\n🚨 **Health Advice:** Dangerous conditions detected. Avoid outdoor exertion. Keep windows closed if AQI is high and use cooling systems to prevent heatstroke.")
 
-# -----------------------------
-# PAGASA Heat Index Reference
-# -----------------------------
-with st.expander("ℹ️ About the Heat Index (PAGASA Categories)"):
-    hi_cat = pagasa_hi_category(current_hi)
-    st.write(f"**Current Category:** {hi_cat}")
-    st.info("""
-    - **Caution (27–32°C):** Fatigue is possible with prolonged exposure.
-    - **Extreme Caution (33–41°C):** Heat cramps and heat exhaustion are possible.
-    - **Danger (42–51°C):** Heat exhaustion is likely; heat stroke is possible.
-    - **Extreme Danger (52°C+):** Heat stroke is imminent.
-    """)
-
-# -----------------------------
-# Restored AQI Health Guide
-# -----------------------------
-st.markdown("### 🌬️ Air Quality Guidance (AQI)")
-
-# Determine AQI Category for the UI
-def get_aqi_info(val):
-    if val <= 50:
-        return "Good", "✅ Air quality is satisfactory, and air pollution poses little or no risk.", "green"
-    elif val <= 100:
-        return "Moderate", "⚠️ Air quality is acceptable. However, there may be a risk for some people, particularly those who are unusually sensitive to air pollution.", "orange"
-    elif val <= 150:
-        return "Unhealthy for Sensitive Groups", "🟠 Members of sensitive groups may experience health effects. The general public is less likely to be affected.", "orange"
-    elif val <= 200:
-        return "Unhealthy", "🔴 Everyone may begin to experience health effects; members of sensitive groups may experience more serious health effects.", "red"
-    else:
-        return "Hazardous", "🚫 Health warnings of emergency conditions. The entire population is more likely to be affected.", "purple"
-
-aqi_cat, aqi_desc, aqi_col = get_aqi_info(aqi)
-
-# Display the AQI Status
-st.info(f"**Current AQI Category: {aqi_cat}**\n\n{aqi_desc}")
-
-# -----------------------------
-# Comparison Table (Optional for Quick Reference)
-# -----------------------------
-with st.expander("📊 AQI Reference Scale"):
-    st.write("This scale is used to communicate how polluted the air currently is:")
-    aqi_data = {
-        "AQI Range": ["0-50", "51-100", "101-150", "151-200", "201-300", "301+"],
-        "Level of Health Concern": ["Good", "Moderate", "Unhealthy (Sensitive)", "Unhealthy", "Very Unhealthy", "Hazardous"],
-        "Color": ["Green", "Yellow", "Orange", "Red", "Purple", "Maroon"]
-    }
-    st.table(pd.DataFrame(aqi_data))
 
 st.header("PREDICTIVE MODELLING")
 # ---------- Data loading ----------
