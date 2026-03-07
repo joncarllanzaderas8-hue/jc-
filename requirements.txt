@@ -9,3 +9,5 @@ pandas
 numpy
 matplotlib
 statsmodels
+seaborn
+scikit-learn
