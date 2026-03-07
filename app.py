@@ -131,8 +131,6 @@ df_hist = load_data()
 raw = df_hist 
 
 def run_qc_only(df_in: pd.DataFrame):
-
-def run_qc_only(df_in: pd.DataFrame):
     if df_in.empty: return df_in, pd.DataFrame()
     df = df_in.copy()
     # Basic Thresholds
