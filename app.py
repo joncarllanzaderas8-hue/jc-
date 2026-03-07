@@ -983,8 +983,8 @@ for i in range(100):
 with st.expander("View Source Code"):
     st.code(arduino_code, language='cpp')
 
-# 1. Define the Arduino code string (Keep this at the top level of your script)
-arduino_code_block = """
+# 1. Define the variable FIRST (Top of your script or before the sidebar code)
+arduino_code = """
 #include <DHT.h>
 
 #define DHT_PIN     2
@@ -1008,6 +1008,7 @@ void loop() {
   float humidity = dht.readHumidity();
   int   mqRaw    = analogRead(MQ_PIN);
 
+  // Simple AQI proxy -- calibrate to your sensor
   float aqi = (mqRaw - 100) * 0.12;
   if (aqi < 0) aqi = 0;
 
@@ -1022,18 +1023,17 @@ void loop() {
 }
 """
 
-# 2. Use st.sidebar to place the elements in the left panel
-st.sidebar.header("Hardware Integration")
-st.sidebar.info("Use this code to connect your physical sensors to the monitor.")
+# 2. Place it in the Sidebar
+st.sidebar.header("📡 Hardware Setup")
 
-# Download Button in Sidebar
+# Download button in sidebar
 st.sidebar.download_button(
-    label="📥 Download Arduino Sketch",
-    data=arduino_code_block,
-    file_name="dasmarinas_sensor.ino",
+    label="Download Arduino Code",
+    data=arduino_code,
+    file_name="dasmarinas_monitor.ino",
     mime="text/plain"
 )
 
-# Optional: Code preview in Sidebar
-with st.sidebar.expander("View Arduino Code"):
-    st.sidebar.code(arduino_code_block, language='cpp')
+# Preview in sidebar
+with st.sidebar.expander("View Source Code"):
+    st.sidebar.code(arduino_code, language='cpp')
