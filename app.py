@@ -142,6 +142,25 @@ signals = {
 
 
 # ---------- Category utilities ----------
+
+def calculate_heat_index(temp_c, humidity):
+    """Calculates Heat Index in Celsius based on NOAA/PAGASA formula."""
+    if temp_c < 27:
+        return temp_c  # Heat Index is not defined below 27°C
+    
+    # Convert Celsius to Fahrenheit for the standard formula
+    T = (temp_c * 9/5) + 32
+    R = humidity
+    
+    # Rothfusz Regression Coefficients
+    hi_f = (-42.379 + (2.04901523 * T) + (10.14333127 * R) - 
+            (0.22475541 * T * R) - (0.00683783 * T**2) - 
+            (0.05481717 * R**2) + (0.00122874 * T**2 * R) + 
+            (0.00085282 * T * R**2) - (0.00000199 * T**2 * R**2))
+    
+    # Convert back to Celsius
+    return (hi_f - 32) * 5/9
+    
 def heat_index_celsius(temp_c, rh):
     T = temp_c * 9.0/5.0 + 32.0
     HI = (-42.379 + 2.049*T + 10.143*rh - 0.224*T*rh - 6.837e-3*T*T 
