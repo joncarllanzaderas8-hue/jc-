@@ -978,6 +978,15 @@ for i in range(100):
     # Do some work here
     time.sleep(0.1)  # All lines inside the 'for' must line up
 
+
+# 3. Optional: Show the code in an expandable box
+with st.expander("View Source Code"):
+    st.code(arduino_code, language='cpp')
+
+import streamlit as st
+
+# 1. Define the Arduino code as a string
+arduino_code = """
 #include <DHT.h>
 
 #define DHT_PIN     2
@@ -1001,7 +1010,7 @@ void loop() {
   float humidity = dht.readHumidity();
   int   mqRaw    = analogRead(MQ_PIN);
 
-// Simple AQI proxy -- calibrate to your sensor
+  // Simple AQI proxy -- calibrate to your sensor
   float aqi = (mqRaw - 100) * 0.12;
   if (aqi < 0) aqi = 0;
 
