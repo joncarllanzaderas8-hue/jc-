@@ -978,12 +978,6 @@ for i in range(100):
     # Do some work here
     time.sleep(0.1)  # All lines inside the 'for' must line up
 
-
-# 3. Optional: Show the code in an expandable box
-with st.expander("View Source Code"):
-    st.code(arduino_code, language='cpp')
-
-
 # ---------- Arduino Code Download (Sidebar) ----------
 arduino_code = """
 #include <DHT.h>
