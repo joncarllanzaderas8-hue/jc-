@@ -610,7 +610,7 @@ if tab_choice == "Single site":
                 height=200,
                 template="plotly_dark",
                 )
-                st.plotly_chart(fig_r, use_container_width=True)
+    st.plotly_chart(fig_r, use_container_width=True)
 
     # ---------- Category labels & first crossing (based on selected scale) ----------
     st.markdown("---")
