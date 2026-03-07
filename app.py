@@ -128,6 +128,10 @@ def load_data(path: str = "sensor_log.csv") -> pd.DataFrame:
 
 df_hist = load_data()
 
+raw = df_hist 
+
+def run_qc_only(df_in: pd.DataFrame):
+
 def run_qc_only(df_in: pd.DataFrame):
     if df_in.empty: return df_in, pd.DataFrame()
     df = df_in.copy()
@@ -487,7 +491,7 @@ def first_crossing_index(series: np.ndarray, threshold: float) -> int | None:
 # =====================================================================================
 if tab_choice == "Single site":
     site_choice = st.selectbox("Site", options=[CODE2LABEL[c] for c in site_codes])
-    site_code = LABEL2CODE.get[site_choice]
+    site_code = LABEL2CODE[site_choice]
 
     bundle = process_site(raw, site_code, steps, alpha, beta, auto_tune)
     if bundle is None:
