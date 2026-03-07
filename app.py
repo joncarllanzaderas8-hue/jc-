@@ -591,7 +591,7 @@ if tab_choice == "Single site":
             acc3.metric("MAPE", f"{mape_calc:.2f} %")
            
             # Residuals
-            if show_residuals:
+    if show_residuals:
             st.markdown("**Residuals (Observed − Fitted One-Step Ahead)**")
             fitted = results_site[col]["fitted"]
             fitted_idx = proc.index[: len(fitted)]
