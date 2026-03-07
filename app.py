@@ -702,7 +702,8 @@ if tab_choice == "Single site":
         elif cat_scale.startswith("EPA") and col == "aqi":
             cat_list = label_categories_vector(res["forecast"], cat_scale)
         elif col == "heat_index":
-            cat_list = [get_pagasa_hi_category(v)[0] for v in res["forecast"]]
+          # The function defined on line 169 is pagasa_hi_category
+            cat_list = [pagasa_hi_category(v) for v in res["forecast"]]
         else:
             # not the "category-driving" series; leave blank
             cat_list = [""] * len(res["forecast"])
