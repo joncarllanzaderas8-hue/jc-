@@ -969,7 +969,7 @@ else:
     st.info("Please upload a CSV file in the sidebar to begin.")
     st.warning("Note: Your CSV must contain columns: `timestamp`, `tempC`, `humidity`, `mqRaw`, and `aqi`.")
 
-
-            time.sleep(0.1)
-    finally:
-        if ser: ser.close()
+# Example of correct alignment
+for i in range(100):
+    # Do some work here
+    time.sleep(0.1)  # All lines inside the 'for' must line up
