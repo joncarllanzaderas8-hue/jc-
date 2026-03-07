@@ -61,6 +61,19 @@ st.markdown("### 🌬️ Air Quality Guidance (AQI)")
 # Fetch info based on current aqi variable
 aqi_cat, aqi_desc, aqi_col = get_aqi_info(aqi)
 
+def get_aqi_info(val):
+    if val <= 50:
+        return "Good", "✅ Air quality is satisfactory; air pollution poses little or no risk.", "#00e400"
+    elif val <= 100:
+        return "Moderate", "⚠️ Air quality is acceptable. Sensitive individuals should limit prolonged outdoor exertion.", "#ffff00"
+    elif val <= 150:
+        return "Unhealthy for Sensitive Groups", "🟠 Members of sensitive groups may experience health effects.", "#ff7e00"
+    elif val <= 200:
+        return "Unhealthy", "🔴 Everyone may begin to experience health effects.", "#ff0000"
+    elif val <= 300:
+        return "Very Unhealthy", "🟣 Health alert: everyone may experience more serious health effects.", "#8f3f97"
+    else:
+        return "Hazardous", "🚫 Health warning of emergency conditions.", "#7e0023"
 # Display a stylized status card
 st.info(f"**Current Category: {aqi_cat}**\n\n{aqi_desc}")
 
