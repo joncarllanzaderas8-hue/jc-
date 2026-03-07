@@ -269,7 +269,7 @@ if "tempC" in proc.columns and "humidity" in proc.columns:
         results[col] = res
         chosen[col] = {"alpha": a, "beta": b, "rmse": float(res["rmse"])}
 
-    return {
+        return {
         "proc": proc,
         "last_ts": last_ts,
         "future_idx": future_idx,
