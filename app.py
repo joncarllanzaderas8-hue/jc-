@@ -133,7 +133,6 @@ def detect_sites_and_labels(df: pd.DataFrame) -> tuple[list[str], dict, dict]:
 site_codes, CODE2LABEL, LABEL2CODE = detect_sites_and_labels(raw)
 
 # ---------- Signals & helpers ----------
-# Look for this dictionary and add the last line
 signals = {
     "tempC":      {"label": "Temperature", "unit": "°C", "color": "#ff6b6b", "clip": (None, None)},
     "humidity":   {"label": "Humidity",    "unit": "%",  "color": "#4ecdc4", "clip": (0, 100)},
@@ -143,34 +142,6 @@ signals = {
 
 
 # ---------- Category utilities ----------
-@st.cache_data
-def load_data(path: str = "sensor_log.csv") -> pd.DataFrame:
-    if not os.path.exists(path):
-        return pd.DataFrame()
-    df = pd.read_csv(path)
-    if 'timestamp' in df.columns:
-        df['timestamp'] = pd.to_datetime(df['timestamp'], errors='coerce')
-    for c in ['aqi','mqRaw']:
-        if c in df.columns:
-            df.loc[df[c] == 0, c] = np.nan
-    return df
-
-df_hist = load_data()
-
-def run_qc_only(df_in: pd.DataFrame):
-    if df_in.empty: return df_in, pd.DataFrame()
-    df = df_in.copy()
-    # Basic Thresholds
-    df['qc_issue'] = (df['tempC'] < -20) | (df['tempC'] > 60) | df['tempC'].isna()
-    # Simple summary
-    summary = df.groupby('Location').size().reset_index(name='rows')
-    return df, summary
-
-df_hist, sensors_summary = run_qc_only(df_hist)
-
-# -----------------------------
-# Calculation Functions
-# -----------------------------
 def heat_index_celsius(temp_c, rh):
     T = temp_c * 9.0/5.0 + 32.0
     HI = (-42.379 + 2.049*T + 10.143*rh - 0.224*T*rh - 6.837e-3*T*T 
