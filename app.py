@@ -36,7 +36,7 @@ with st.sidebar:
         * **Green/Yellow:** Safe levels.
         * **Orange/Red:** High Heat or Poor Air Quality.
         * **Black/Empty:** No sensor data currently reporting from that zone.
-        still in progress...
+        * **still in progress...**
         """)
         
 with st.sidebar:
