@@ -983,15 +983,14 @@ for i in range(100):
 with st.expander("View Source Code"):
     st.code(arduino_code, language='cpp')
 
-# --- STEP 1: DEFINE THE CODE FIRST ---
-# Use triple quotes to keep the formatting exactly as it is in Arduino
+# 1. Define the Arduino code string (Keep this at the top level of your script)
 arduino_code_block = """
 #include <DHT.h>
 
 #define DHT_PIN     2
 #define DHT_TYPE    DHT22
 #define MQ_PIN      A0
-#define INTERVAL_MS 5000   // send every 5 seconds
+#define INTERVAL_MS 5000 
 
 DHT dht(DHT_PIN, DHT_TYPE);
 unsigned long lastSend = 0;
@@ -1009,11 +1008,10 @@ void loop() {
   float humidity = dht.readHumidity();
   int   mqRaw    = analogRead(MQ_PIN);
 
-  // Simple AQI proxy -- calibrate to your sensor
   float aqi = (mqRaw - 100) * 0.12;
   if (aqi < 0) aqi = 0;
 
-  if (isnan(tempC) || isnan(humidity)) return;  // skip bad reads
+  if (isnan(tempC) || isnan(humidity)) return;
 
   Serial.print('{');
   Serial.print("\\"tempC\\":"); Serial.print(tempC, 1); Serial.print(',');
@@ -1024,18 +1022,18 @@ void loop() {
 }
 """
 
-# --- STEP 2: NOW USE THE VARIABLE ---
-st.subheader("Hardware Integration")
-st.info("Upload this code to your Arduino to start sending data to the dashboard.")
+# 2. Use st.sidebar to place the elements in the left panel
+st.sidebar.header("Hardware Integration")
+st.sidebar.info("Use this code to connect your physical sensors to the monitor.")
 
-# This creates the download button
-st.download_button(
-    label="Download Arduino Sketch (.ino)",
+# Download Button in Sidebar
+st.sidebar.download_button(
+    label="📥 Download Arduino Sketch",
     data=arduino_code_block,
-    file_name="dasmarinas_monitor.ino",
+    file_name="dasmarinas_sensor.ino",
     mime="text/plain"
 )
 
-# This displays the code nicely on the webpage
-with st.expander("Show Arduino Source Code"):
-    st.code(arduino_code_block, language='cpp')
+# Optional: Code preview in Sidebar
+with st.sidebar.expander("View Arduino Code"):
+    st.sidebar.code(arduino_code_block, language='cpp')
