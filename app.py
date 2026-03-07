@@ -259,6 +259,7 @@ with st.expander("📊 AQI Reference Scale"):
     }
     st.table(pd.DataFrame(aqi_data))
 
+st.header("PREDICTIVE MODELLING")
 # ---------- Data loading ----------
 @st.cache_data(show_spinner=False)
 def load_data(file_bytes: bytes | None, fallback_path: str) -> pd.DataFrame:
