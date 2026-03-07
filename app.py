@@ -233,14 +233,14 @@ st.header("PREDICTIVE MODELLING")
 if "tempC" in proc.columns and "humidity" in proc.columns:
         # We ensure the column name matches the key in your 'signals' dictionary
         proc["heat_index"] = proc.apply(
-            lambda r: calculate_heat_index(r["tempC"], r["humidity"]), axis=1
+        lambda r: calculate_heat_index(r["tempC"], r["humidity"]), axis=1
         )
-
-    last_ts = proc.index[-1]
-    future_idx = pd.date_range(last_ts + pd.Timedelta("5min"), periods=steps, freq="5min")
-
-    results = {}
-    chosen = {}
+    
+        last_ts = proc.index[-1]
+        future_idx = pd.date_range(last_ts + pd.Timedelta("5min"), periods=steps, freq="5min")
+    
+        results = {}
+        chosen = {}
 
     for col, meta in signals.items():
         # --- FIX 2: NOW 'heat_index' WILL BE FOUND IN proc.columns ---
