@@ -58,9 +58,6 @@ with st.sidebar:
 st.divider()
 st.markdown("### 🌬️ Air Quality Guidance (AQI)")
 
-# Fetch info based on current aqi variable
-aqi_cat, aqi_desc, aqi_col = get_aqi_info(aqi)
-
 def get_aqi_info(val):
     if val <= 50:
         return "Good", "✅ Air quality is satisfactory; air pollution poses little or no risk.", "#00e400"
@@ -74,6 +71,10 @@ def get_aqi_info(val):
         return "Very Unhealthy", "🟣 Health alert: everyone may experience more serious health effects.", "#8f3f97"
     else:
         return "Hazardous", "🚫 Health warning of emergency conditions.", "#7e0023"
+        
+# Fetch info based on current aqi variable
+aqi_cat, aqi_desc, aqi_col = get_aqi_info(aqi)
+
 # Display a stylized status card
 st.info(f"**Current Category: {aqi_cat}**\n\n{aqi_desc}")
 
