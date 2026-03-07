@@ -114,25 +114,83 @@ st.set_page_config(page_title="Dasmariñas Risk Monitor", layout="wide")
 # -----------------------------
 # Data Loading & QC
 # -----------------------------
-@st.cache_data(show_spinner=False)
-def load_data(file_bytes: bytes | None, fallback_path: str) -> pd.DataFrame:
-    if file_bytes is not None:
-        df = pd.read_csv(io.BytesIO(file_bytes))
-    else:
-        if not os.path.exists(fallback_path):
-            st.error(f"CSV not found at {fallback_path}. Upload a file or place it under data/ as sensor_log.csv.")
-            st.stop()
-        df = pd.read_csv(fallback_path)
-
-    if "timestamp" not in df.columns:
-        st.error("Missing 'timestamp' column in CSV.")
-        st.stop()
-
-    df["timestamp"] = pd.to_datetime(df["timestamp"])
+@st.cache_data
+def load_data(path: str = "sensor_log.csv") -> pd.DataFrame:
+    df = pd.read_csv(path)
+    # Parse time
+    if 'timestamp' in df.columns:
+        df['timestamp'] = pd.to_datetime(df['timestamp'], errors='coerce')
+    # Drop duplicate (timestamp, Location)
+    if set(['timestamp','Location']).issubset(df.columns):
+        df = df.drop_duplicates(subset=['timestamp','Location'])
+    # Treat suspicious zeros as missing
+    for c in ['aqi','mqRaw']:
+        if c in df.columns:
+            df.loc[df[c] == 0, c] = np.nan
     return df
 
+df = load_data()
+df_hist = df.copy()
 
-raw = load_data(uploaded.getvalue() if uploaded else None, default_path)
+def run_qc_and_trust(df_in: pd.DataFrame):
+    df = df_in.copy()
+    now = pd.to_datetime(datetime.utcnow())
+    # thresholds
+    T_MIN, T_MAX = -20.0, 60.0
+    HUM_MIN, HUM_MAX = 0.0, 100.0
+    AQI_MIN, AQI_MAX = 0.0, 500.0
+
+    # flags for issues
+    df['qc_missing'] = df[['tempC','humidity','aqi','timestamp']].isna().any(axis=1)
+    df['qc_out_of_range'] = False
+    if 'tempC' in df.columns:
+        df.loc[df['tempC'].notna() & ((df['tempC'] < T_MIN) | (df['tempC'] > T_MAX)), 'qc_out_of_range'] = True
+    if 'humidity' in df.columns:
+        df.loc[df['humidity'].notna() & ((df['humidity'] < HUM_MIN) | (df['humidity'] > HUM_MAX)), 'qc_out_of_range'] = True
+    if 'aqi' in df.columns:
+        df.loc[df['aqi'].notna() & ((df['aqi'] < AQI_MIN) | (df['aqi'] > AQI_MAX)), 'qc_out_of_range'] = True
+
+    # large jumps per location (delta threshold per minute)
+    df['qc_jump'] = False
+    if 'timestamp' in df.columns and 'tempC' in df.columns and 'Location' in df.columns:
+        df = df.sort_values(['Location','timestamp'])
+        grp = df.groupby('Location')
+        for name, g in grp:
+            if len(g) < 2:
+                continue
+            dt = g['timestamp'].diff().dt.total_seconds().fillna(0) / 60.0
+            dtemp = g['tempC'].diff().abs().fillna(0)
+            # flag if temp change > 8°C within 1 minute, scaled
+            mask = (dt <= 5) & (dtemp > 8)
+            df.loc[mask.index, 'qc_jump'] = mask
+
+    df['qc_issue'] = df['qc_missing'] | df['qc_out_of_range'] | df['qc_jump']
+
+    # per-site summary
+    sites = []
+    for tag, group in df.groupby('Location') if 'Location' in df.columns else [(None, df)]:
+        total = len(group)
+        missing_pct = float(group['qc_missing'].sum() / total) if total else 0.0
+        oor_pct = float(group['qc_out_of_range'].sum() / total) if total else 0.0
+        recent = group.loc[group['timestamp'] >= (pd.to_datetime(now) - pd.Timedelta(days=1))] if 'timestamp' in group.columns else group
+        recent_anom_pct = float(recent['qc_issue'].sum() / len(recent)) if len(recent) else 0.0
+        last_ts = group['timestamp'].max() if 'timestamp' in group.columns else pd.NaT
+        freshness_min = float((pd.to_datetime(now) - pd.to_datetime(last_ts)).total_seconds()/60.0) if pd.notna(last_ts) else float('inf')
+        # trust score: start 1.0, subtract penalties
+        p_missing = 0.4 * missing_pct
+        p_oor = 0.3 * oor_pct
+        p_fresh = 0.2 * min(1.0, freshness_min / (24*60))
+        p_recent = 0.1 * recent_anom_pct
+        trust = max(0.0, 1.0 - (p_missing + p_oor + p_fresh + p_recent))
+        sites.append({'site': tag if tag is not None else 'global', 'total_rows': total,
+                      'missing_pct': missing_pct, 'out_of_range_pct': oor_pct,
+                      'recent_anom_pct': recent_anom_pct, 'last_seen': last_ts,
+                      'freshness_min': freshness_min, 'trust_score': trust})
+
+    df_sites = pd.DataFrame(sites)
+    if 'site' in df_sites.columns:
+        df_sites = df_sites.sort_values('site')
+    return df, df_sites)
 
 # -----------------------------
 # Calculation Functions
