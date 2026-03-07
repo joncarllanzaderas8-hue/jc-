@@ -603,7 +603,7 @@ if tab_choice == "Single site":
     rmse_calc, mae_calc, mape_calc = compute_accuracy_metrics(actual_vals, pred_vals)
     # -------------------------
     resid = proc[col].iloc[: len(fitted)] - pd.Series(fitted, index=fitted_idx)
-            fig_r = px.bar(
+    fig_r = px.bar(
                 x=resid.index,
                 y=resid.values,
                 labels={"x": "Time", "y": "Residual"},
