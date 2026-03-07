@@ -114,20 +114,25 @@ st.set_page_config(page_title="Dasmariñas Risk Monitor", layout="wide")
 # -----------------------------
 # Data Loading & QC
 # -----------------------------
-uploaded = st.sidebar.file_uploader("Upload sensor_log.csv", type="csv")
+@st.cache_data(show_spinner=False)
+def load_data(file_bytes: bytes | None, fallback_path: str) -> pd.DataFrame:
+    if file_bytes is not None:
+        df = pd.read_csv(io.BytesIO(file_bytes))
+    else:
+        if not os.path.exists(fallback_path):
+            st.error(f"CSV not found at {fallback_path}. Upload a file or place it under data/ as sensor_log.csv.")
+            st.stop()
+        df = pd.read_csv(fallback_path)
 
-if uploaded is not None:
-    raw = pd.read_csv(uploaded)
-    # Ensure timestamp is converted immediately
-    raw['timestamp'] = pd.to_datetime(raw['timestamp']) 
-else:
-    # Use your historical/default data so 'raw' is always defined
-    raw = df_hist if 'df_hist' in locals() else pd.DataFrame()
+    if "timestamp" not in df.columns:
+        st.error("Missing 'timestamp' column in CSV.")
+        st.stop()
 
-# Now line 304 will work because 'raw' exists!
-if not raw.empty:
-    site_codes, CODE2LABEL, LABEL2CODE = detect_sites_and_labels(raw)
+    df["timestamp"] = pd.to_datetime(df["timestamp"])
+    return df
 
+
+raw = load_data(uploaded.getvalue() if uploaded else None, default_path)
 
 # -----------------------------
 # Calculation Functions
