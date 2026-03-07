@@ -11,7 +11,7 @@ import warnings
 st.set_page_config(page_title="Sensor Forecasting Dashboard", layout="wide")
 warnings.filterwarnings('ignore')
 
-# --- Custom Styling ---
+# --- Custom Styling (Matching Notebook) ---
 plt.rcParams.update({
     'figure.facecolor': '#0f1117',
     'axes.facecolor':   '#1a1d27',
@@ -26,7 +26,6 @@ plt.rcParams.update({
     'font.family':      'monospace',
 })
 
-# --- Title ---
 st.title("🌡️ Sensor Log — 4-Hour Forecasting")
 
 # --- Sidebar: Data Loading ---
@@ -36,21 +35,22 @@ uploaded_file = st.sidebar.file_uploader("Upload sensor_log.csv", type=["csv"])
 def preprocess_data(df_raw):
     try:
         df = df_raw.copy()
-        # Handle mixed date formats safely
+        # Convert timestamp and handle errors
         df['timestamp'] = pd.to_datetime(df['timestamp'], errors='coerce')
         df = df.dropna(subset=['timestamp']).sort_values('timestamp')
         
-        # Preprocessing logic from notebook
+        # Notebook specific cleaning
         df['humidity'] = df['humidity'].clip(upper=100)
         df['aqi'] = df['aqi'].replace(0, np.nan).ffill().fillna(0)
         
         df = df.set_index('timestamp')
-        # Resample to 5min and interpolate gaps (max 30 mins)
+        # Resample to 5-minute intervals
         df_rs = df[['tempC', 'humidity', 'mqRaw', 'aqi']].resample('5min').mean()
+        # Interpolate gaps up to 30 mins
         df_rs = df_rs.interpolate(method='linear', limit=6).dropna()
         return df_rs
     except Exception as e:
-        st.error(f"Error processing data: {e}")
+        st.error(f"Preprocessing error: {e}")
         return pd.DataFrame()
 
 if uploaded_file is not None:
@@ -58,15 +58,15 @@ if uploaded_file is not None:
     df_processed = preprocess_data(df_raw)
     
     if not df_processed.empty:
-        # --- UI: Metrics ---
+        # --- Metrics ---
         last_ts = df_processed.index[-1]
-        cols = st.columns(4)
-        cols[0].metric("Temp", f"{df_processed['tempC'].iloc[-1]:.1f}°C")
-        cols[1].metric("Humidity", f"{df_processed['humidity'].iloc[-1]:.1f}%")
-        cols[2].metric("AQI", f"{df_processed['aqi'].iloc[-1]:.0f}")
-        cols[3].metric("Last Update", last_ts.strftime('%H:%M'))
+        m1, m2, m3, m4 = st.columns(4)
+        m1.metric("Temp", f"{df_processed['tempC'].iloc[-1]:.1f}°C")
+        m2.metric("Humidity", f"{df_processed['humidity'].iloc[-1]:.1f}%")
+        m3.metric("AQI", f"{df_processed['aqi'].iloc[-1]:.0f}")
+        m4.metric("Last Sync", last_ts.strftime('%H:%M'))
 
-        # --- Forecasting & Plotting ---
+        # --- Forecasting ---
         try:
             fig = plt.figure(figsize=(14, 10))
             gs = gridspec.GridSpec(2, 2, figure=fig, hspace=0.3, wspace=0.2)
@@ -82,28 +82,34 @@ if uploaded_file is not None:
                 ax = fig.add_subplot(spec)
                 series = df_processed[key]
                 
-                # Fit Model
-                model = ExponentialSmoothing(series, trend='add').fit()
-                forecast = model.forecast(48) # 4 hours
+                # Holt's Linear Trend (DES)
+                model = ExponentialSmoothing(series, trend='add', seasonal=None).fit()
+                forecast = model.forecast(48) # 48 * 5min = 4 hours
                 
-                # Plotting
-                ax.plot(series.tail(100).index, series.tail(100), color=color, alpha=0.4)
+                # Plot last 12 hours of history + forecast
+                hist_display = series.tail(144)
+                ax.plot(hist_display.index, hist_display, color=color, alpha=0.3, label='History')
                 ax.plot(forecast.index, forecast, color=color, linewidth=2, label='Forecast')
                 
-                ax.set_title(title, loc='left', color='#ddd')
+                # Confidence intervals (90%)
+                sigma = np.std(model.resid)
+                margin = 1.645 * sigma
+                ax.fill_between(forecast.index, forecast - margin, forecast + margin, color=color, alpha=0.1)
+
+                ax.set_title(title, loc='left', fontsize=11, fontweight='bold')
                 ax.xaxis.set_major_formatter(mdates.DateFormatter('%H:%M'))
-                ax.spines['top'].set_visible(False)
-                ax.spines['right'].set_visible(False)
+                ax.tick_params(labelsize=8)
+                ax.grid(True, alpha=0.2)
 
             st.pyplot(fig)
             
-            # Updated Table syntax for 2026 Streamlit versions
-            st.subheader("Raw Data Preview")
-            st.dataframe(df_processed.tail(10), width="100%") 
-            
+            st.subheader("Recent Data Log")
+            # FIX: Use use_container_width=True instead of '100%'
+            st.dataframe(df_processed.tail(15), use_container_width=True)
+
         except Exception as e:
-            st.error(f"Error generating forecast: {e}")
+            st.error(f"Forecasting calculation failed: {e}")
     else:
-        st.warning("Processed data is empty. Check your CSV format.")
+        st.warning("The uploaded file could not be processed. Please check the 'timestamp' column.")
 else:
-    st.info("👋 Awaiting CSV upload...")
+    st.info("Please upload your `sensor_log.csv` file in the sidebar to begin.")
