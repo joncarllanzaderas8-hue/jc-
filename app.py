@@ -983,14 +983,15 @@ for i in range(100):
 with st.expander("View Source Code"):
     st.code(arduino_code, language='cpp')
 
-# 1. Define the variable FIRST (Top of your script or before the sidebar code)
+
+# ---------- Arduino Code Download (Sidebar) ----------
 arduino_code = """
 #include <DHT.h>
 
 #define DHT_PIN     2
 #define DHT_TYPE    DHT22
 #define MQ_PIN      A0
-#define INTERVAL_MS 5000 
+#define INTERVAL_MS 5000   // send every 5 seconds
 
 DHT dht(DHT_PIN, DHT_TYPE);
 unsigned long lastSend = 0;
@@ -1008,11 +1009,11 @@ void loop() {
   float humidity = dht.readHumidity();
   int   mqRaw    = analogRead(MQ_PIN);
 
-  // Simple AQI proxy -- calibrate to your sensor
+  // Simple AQI proxy — calibrate to your sensor
   float aqi = (mqRaw - 100) * 0.12;
   if (aqi < 0) aqi = 0;
 
-  if (isnan(tempC) || isnan(humidity)) return;
+  if (isnan(tempC) || isnan(humidity)) return;  // skip bad reads
 
   Serial.print('{');
   Serial.print("\\"tempC\\":"); Serial.print(tempC, 1); Serial.print(',');
@@ -1023,17 +1024,21 @@ void loop() {
 }
 """
 
-# 2. Place it in the Sidebar
-st.sidebar.header("📡 Hardware Setup")
+with st.sidebar:
+    st.divider()
+    st.subheader("🔧 Sensor Setup")
 
-# Download button in sidebar
-st.sidebar.download_button(
-    label="Download Arduino Code",
-    data=arduino_code,
-    file_name="dasmarinas_monitor.ino",
-    mime="text/plain"
-)
+    st.write(
+        "Download the **Arduino sketch** to program your sensor node "
+        "(DHT22 + MQ gas sensor)."
+    )
 
-# Preview in sidebar
-with st.sidebar.expander("View Source Code"):
-    st.sidebar.code(arduino_code, language='cpp')
+    st.download_button(
+        label="⬇️ Download Arduino Code (.ino)",
+        data=arduino_code,
+        file_name="dasmarinas_sensor_node.ino",
+        mime="text/plain",
+    )
+
+    with st.expander("👁 View Arduino Source Code"):
+        st.code(arduino_code, language="cpp")'cpp')
