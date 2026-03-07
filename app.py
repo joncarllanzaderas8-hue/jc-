@@ -37,6 +37,7 @@ with st.sidebar:
         * **MAPE (Mean Absolute Percentage Error):** The error as a percentage. 
             * *Below 10%:* Excellent.
             * *10% - 25%:* Good/Dependable.
+            * *> 50% :* Inaccurate forecasting.
         * **Residuals:** The "leftover" error. If these are small and random, your model is doing a great job!
         * **Confidence Interval:** The shaded 90% range where future values are likely to fall.
 
