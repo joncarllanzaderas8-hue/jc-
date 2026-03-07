@@ -55,17 +55,6 @@ with st.sidebar:
         | >52°C | **Extreme Danger** | Heat stroke imminent |
         """)
 
-st.sidebar.header("📡 Settings")
-location_mode = st.sidebar.selectbox("Monitoring Site", ["A - Green Space", "B - Residential", "C - Commercial"])
-data_source = st.sidebar.radio("Data Source", ["Latest Reading", "Manual Input"])
-
-try:
-    model = joblib.load('dt_model.joblib')
-    label_map = {0: "Normal", 1: "Moderate", 2: "High"}
-except:
-    st.error("Model 'dt_model.joblib' not found.")
-    st.stop()
-
     
 # ---------- Sidebar controls ----------
 with st.sidebar:
@@ -139,6 +128,7 @@ def run_qc_only(df_in: pd.DataFrame):
 
 df_hist, sensors_summary = run_qc_only(df_hist)
 
+
 # -----------------------------
 # Calculation Functions
 # -----------------------------
@@ -155,6 +145,17 @@ def pagasa_hi_category(hi_c):
     if hi_c <= 51: return "Danger"
     return "Extreme Dander"
 
+st.sidebar.header("📡 Settings")
+location_mode = st.sidebar.selectbox("Monitoring Site", ["A - Green Space", "B - Residential", "C - Commercial"])
+data_source = st.sidebar.radio("Data Source", ["Latest Reading", "Manual Input"])
+
+try:
+    model = joblib.load('dt_model.joblib')
+    label_map = {0: "Normal", 1: "Moderate", 2: "High"}
+except:
+    st.error("Model 'dt_model.joblib' not found.")
+    st.stop()
+    
 # -----------------------------
 # Current Status Logic
 # -----------------------------
