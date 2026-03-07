@@ -983,10 +983,9 @@ for i in range(100):
 with st.expander("View Source Code"):
     st.code(arduino_code, language='cpp')
 
-import streamlit as st
-
-# 1. Define the Arduino code as a string
-arduino_code = """
+# --- STEP 1: DEFINE THE CODE FIRST ---
+# Use triple quotes to keep the formatting exactly as it is in Arduino
+arduino_code_block = """
 #include <DHT.h>
 
 #define DHT_PIN     2
@@ -1025,17 +1024,18 @@ void loop() {
 }
 """
 
-# 2. Create the UI elements
-st.subheader("Sensor Setup")
-st.write("Download the Arduino sketch below to program your hardware (DHT22 + MQ Sensor).")
+# --- STEP 2: NOW USE THE VARIABLE ---
+st.subheader("Hardware Integration")
+st.info("Upload this code to your Arduino to start sending data to the dashboard.")
 
+# This creates the download button
 st.download_button(
-    label="Download Arduino Code (.ino)",
-    data=arduino_code,
-    file_name="dasmarinas_sensor_node.ino",
-    mime="text/plain",
+    label="Download Arduino Sketch (.ino)",
+    data=arduino_code_block,
+    file_name="dasmarinas_monitor.ino",
+    mime="text/plain"
 )
 
-# 3. Optional: Show the code in an expandable box
-with st.expander("View Source Code"):
-    st.code(arduino_code, language='cpp')
+# This displays the code nicely on the webpage
+with st.expander("Show Arduino Source Code"):
+    st.code(arduino_code_block, language='cpp')
