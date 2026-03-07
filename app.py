@@ -140,6 +140,40 @@ signals = {
     "aqi":        {"label": "AQI",         "unit": "",   "color": "#6bcb77", "clip": (0, None)},
 }
 
+# -----------------------------
+# Restored AQI Health Guide
+# -----------------------------
+st.markdown("### 🌬️ Air Quality Guidance (AQI)")
+
+# Determine AQI Category for the UI
+def get_aqi_info(val):
+    if val <= 50:
+        return "Good", "✅ Air quality is satisfactory, and air pollution poses little or no risk.", "green"
+    elif val <= 100:
+        return "Moderate", "⚠️ Air quality is acceptable. However, there may be a risk for some people, particularly those who are unusually sensitive to air pollution.", "orange"
+    elif val <= 150:
+        return "Unhealthy for Sensitive Groups", "🟠 Members of sensitive groups may experience health effects. The general public is less likely to be affected.", "orange"
+    elif val <= 200:
+        return "Unhealthy", "🔴 Everyone may begin to experience health effects; members of sensitive groups may experience more serious health effects.", "red"
+    else:
+        return "Hazardous", "🚫 Health warnings of emergency conditions. The entire population is more likely to be affected.", "purple"
+
+aqi_cat, aqi_desc, aqi_col = get_aqi_info(aqi)
+
+# Display the AQI Status
+st.info(f"**Current AQI Category: {aqi_cat}**\n\n{aqi_desc}")
+
+# -----------------------------
+# Comparison Table (Optional for Quick Reference)
+# -----------------------------
+with st.expander("📊 AQI Reference Scale"):
+    st.write("This scale is used to communicate how polluted the air currently is:")
+    aqi_data = {
+        "AQI Range": ["0-50", "51-100", "101-150", "151-200", "201-300", "301+"],
+        "Level of Health Concern": ["Good", "Moderate", "Unhealthy (Sensitive)", "Unhealthy", "Very Unhealthy", "Hazardous"],
+        "Color": ["Green", "Yellow", "Orange", "Red", "Purple", "Maroon"]
+    }
+    st.table(pd.DataFrame(aqi_data))
 
 # ---------- Category utilities ----------
 
@@ -852,37 +886,3 @@ with st.expander("ℹ️ About the Heat Index (PAGASA Categories)"):
     - **Extreme Danger (52°C+):** Heat stroke is imminent.
     """)
 
-# -----------------------------
-# Restored AQI Health Guide
-# -----------------------------
-st.markdown("### 🌬️ Air Quality Guidance (AQI)")
-
-# Determine AQI Category for the UI
-def get_aqi_info(val):
-    if val <= 50:
-        return "Good", "✅ Air quality is satisfactory, and air pollution poses little or no risk.", "green"
-    elif val <= 100:
-        return "Moderate", "⚠️ Air quality is acceptable. However, there may be a risk for some people, particularly those who are unusually sensitive to air pollution.", "orange"
-    elif val <= 150:
-        return "Unhealthy for Sensitive Groups", "🟠 Members of sensitive groups may experience health effects. The general public is less likely to be affected.", "orange"
-    elif val <= 200:
-        return "Unhealthy", "🔴 Everyone may begin to experience health effects; members of sensitive groups may experience more serious health effects.", "red"
-    else:
-        return "Hazardous", "🚫 Health warnings of emergency conditions. The entire population is more likely to be affected.", "purple"
-
-aqi_cat, aqi_desc, aqi_col = get_aqi_info(aqi)
-
-# Display the AQI Status
-st.info(f"**Current AQI Category: {aqi_cat}**\n\n{aqi_desc}")
-
-# -----------------------------
-# Comparison Table (Optional for Quick Reference)
-# -----------------------------
-with st.expander("📊 AQI Reference Scale"):
-    st.write("This scale is used to communicate how polluted the air currently is:")
-    aqi_data = {
-        "AQI Range": ["0-50", "51-100", "101-150", "151-200", "201-300", "301+"],
-        "Level of Health Concern": ["Good", "Moderate", "Unhealthy (Sensitive)", "Unhealthy", "Very Unhealthy", "Hazardous"],
-        "Color": ["Green", "Yellow", "Orange", "Red", "Purple", "Maroon"]
-    }
-    st.table(pd.DataFrame(aqi_data))
