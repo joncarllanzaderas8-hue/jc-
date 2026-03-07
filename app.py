@@ -1001,7 +1001,7 @@ void loop() {
   float humidity = dht.readHumidity();
   int   mqRaw    = analogRead(MQ_PIN);
 
-  // Simple AQI proxy — calibrate to your sensor
+// Simple AQI proxy -- calibrate to your sensor
   float aqi = (mqRaw - 100) * 0.12;
   if (aqi < 0) aqi = 0;
 
