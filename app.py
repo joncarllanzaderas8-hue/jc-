@@ -231,25 +231,24 @@ st.header("PREDICTIVE MODELLING")
 
     # --- FIX 1: CALCULATE HEAT INDEX COLUMN BEFORE FORECASTING ---
 if "tempC" in proc.columns and "humidity" in proc.columns:
-        # We ensure the column name matches the key in your 'signals' dictionary
-        proc["heat_index"] = proc.apply(
+    # Ensure the column name matches the key in your 'signals' dictionary
+    proc["heat_index"] = proc.apply(
         lambda r: calculate_heat_index(r["tempC"], r["humidity"]), axis=1
-        )
-    
-        last_ts = proc.index[-1]
-        future_idx = pd.date_range(last_ts + pd.Timedelta("5min"), periods=steps, freq="5min")
-    
-        results = {}
-        chosen = {}
+    )
 
-        for col, meta in signals.items():
+    last_ts = proc.index[-1]
+    future_idx = pd.date_range(last_ts + pd.Timedelta("5min"), periods=steps, freq="5min")
+
+    results = {}
+    chosen = {}
+
+    for col, meta in signals.items():
         # --- FIX 2: NOW 'heat_index' WILL BE FOUND IN proc.columns ---
-            series = proc[col].values if col in proc.columns else None
+        series = proc[col].values if col in proc.columns else None
         
-        # If the series is all NaNs (common if temp < 27°C), skip or handle
         if series is None or len(series) == 0 or np.all(np.isnan(series)):
-            return
-
+            continue  
+            
         if auto_tune:
             best = tune_holt(series, steps=steps)
             a, b = best["alpha"], best["beta"]
@@ -268,8 +267,8 @@ if "tempC" in proc.columns and "humidity" in proc.columns:
 
         results[col] = res
         chosen[col] = {"alpha": a, "beta": b, "rmse": float(res["rmse"])}
-
-        return {
+        
+    return {
         "proc": proc,
         "last_ts": last_ts,
         "future_idx": future_idx,
