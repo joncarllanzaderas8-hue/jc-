@@ -67,8 +67,7 @@ with st.sidebar:
         ]
     }
     st.table(pd.DataFrame(aqi_table))
-)
-    
+""")
 # ---------- Sidebar controls ----------
 with st.sidebar:
     st.header("Controls")
