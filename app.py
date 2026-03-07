@@ -872,6 +872,102 @@ st.info(
     "DENR PM2.5 (DAO 2020‑14), selectable at left."
 )
 
+import streamlit as st
+import pandas as pd
+import numpy as np
+
+# Set page config for a wider layout
+st.set_page_config(page_title="Sensor Data Processor", layout="wide")
+
+def process_data(df_raw):
+    """Encapsulates your processing logic with logging."""
+    df = df_raw.copy()
+    logs = []
+
+    # Ensure timestamp is datetime
+    df['timestamp'] = pd.to_datetime(df['timestamp'])
+
+    # ── Step 1: Sort by timestamp ───────────────
+    ooo = (df['timestamp'].diff().dt.total_seconds() < 0).sum()
+    df = df.sort_values('timestamp').reset_index(drop=True)
+    logs.append(f"✅ Sorted: {ooo} out-of-order records fixed.")
+
+    # ── Step 2: Cap humidity at 100% ────────────
+    sat = (df['humidity'] >= 100).sum()
+    df['humidity'] = df['humidity'].clip(upper=100)
+    logs.append(f"✅ Humidity: {sat} readings capped at 100%.")
+
+    # ── Step 3: Replace AQI = 0 with rolling median ──────────
+    zero_aqi = (df['aqi'] == 0).sum()
+    rolling_med = df['aqi'].rolling(5, center=True, min_periods=1).median()
+    df['aqi'] = np.where(df['aqi'] == 0, rolling_med, df['aqi'])
+    logs.append(f"✅ AQI: {zero_aqi} zero-readings replaced with rolling median.")
+
+    # ── Step 4: Resample to uniform 5-min grid ───────────
+    df = df.set_index('timestamp')
+    df_rs = df[['tempC', 'humidity', 'mqRaw', 'aqi']].resample('5min').median()
+    logs.append(f"✅ Resample: {len(df_rs)} uniform 5-minute buckets created.")
+
+    # ── Step 5: Interpolate gaps ≤ 30 min (6 steps) ───────────────────────────
+    gap_mask = df_rs.isnull().any(axis=1).sum()
+    df_rs = df_rs.interpolate(method='time', limit=6)
+    df_rs = df_rs.dropna()
+    logs.append(f"✅ Interpolation: {gap_mask} missing buckets filled/cleaned.")
+    
+    return df_rs, logs
+
+# --- UI Layout ---
+st.title("📊 Sensor Data Cleaning Pipeline")
+st.markdown("Upload your raw `sensor_log.csv` to apply sorting, capping, and resampling.")
+
+# Sidebar for Upload
+with st.sidebar:
+    st.header("Data Input")
+    uploaded_file = st.file_uploader(
+        "Upload sensor_log.csv", 
+        type=["csv"], 
+        key="sensor_data_uploader" # Unique key to prevent DuplicateID error
+    )
+
+if uploaded_file is not None:
+    # Read Data
+    df_input = pd.read_csv(uploaded_file)
+    
+    st.subheader("Processing Logs")
+    
+    # Run Processing
+    with st.spinner("Processing sensor data..."):
+        df_final, processing_logs = process_data(df_input)
+    
+    # Display Logs in a neat success box
+    for log in processing_logs:
+        st.write(log)
+
+    st.divider()
+
+    # Layout for Results
+    col1, col2 = st.columns([2, 1])
+
+    with col1:
+        st.subheader("Cleaned Data (Preview)")
+        st.dataframe(df_final.head(10), use_container_width=True)
+        
+        # Download Button
+        csv = df_final.to_csv().encode('utf-8')
+        st.download_button(
+            label="📥 Download Processed CSV",
+            data=csv,
+            file_name="cleaned_sensor_data.csv",
+            mime="text/csv",
+        )
+
+    with col2:
+        st.subheader("Statistics")
+        st.write(df_final.describe().round(3))
+
+else:
+    st.info("Please upload a CSV file in the sidebar to begin.")
+    st.warning("Note: Your CSV must contain columns: `timestamp`, `tempC`, `humidity`, `mqRaw`, and `aqi`.")
 
 import streamlit as st
 import pandas as pd
