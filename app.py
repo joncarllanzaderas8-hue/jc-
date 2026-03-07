@@ -142,7 +142,7 @@ import time
 from datetime import datetime
 from collections import deque
 
-# --- CONFIGURATION (Exact from Notebook) ---
+# ── 1. CONFIGURATION (Directly from Notebook) ──────────────────────────────
 SIGNALS = {
     'tempC':    {'label': 'Temperature',   'unit': '°C',  'color': '#ff6b6b', 'warn': 35,  'ylim': (24, 40)},
     'humidity': {'label': 'Humidity',      'unit': '%',   'color': '#4ecdc4', 'warn': 90,  'ylim': (55, 105)},
@@ -156,25 +156,26 @@ HOLT_BETA = 0.15
 CI_Z = 1.645
 LIVE_BUFFER_SIZE = 2000
 
-# --- HELPERS ---
-def find_arduino():
-    """Automatically finds the first available Arduino/USB-Serial port."""
+# ── 2. CORE LOGIC (Directly from Notebook) ──────────────────────────────────
+def auto_detect_port():
+    """Finds the first port that looks like an Arduino (CH340, CP210, etc)."""
     ports = list(serial.tools.list_ports.comports())
     for p in ports:
-        # Search for common Arduino identifiers
-        if "Arduino" in p.description or "USB Serial" in p.description or "CH340" in p.description:
+        desc = (p.description or "").lower()
+        if any(k in desc for k in ['arduino', 'ch340', 'cp210', 'ftdi', 'usb serial']):
             return p.device
     return None
 
 def holt_forecast(series, alpha=HOLT_ALPHA, beta=HOLT_BETA, steps=FORECAST_STEPS):
     y = np.array(series, dtype=float)
     n = len(y)
-    if n < 2: return np.full(steps, y[-1]), np.full(steps, y[-1]), np.full(steps, y[-1]), 0.0
+    if n < 2:
+        return np.full(steps, y[-1]), np.full(steps, y[-1]), np.full(steps, y[-1]), 0.0
     l, b = np.zeros(n), np.zeros(n)
     l[0], b[0] = y[0], y[1] - y[0]
     for t in range(1, n):
         l[t] = alpha * y[t] + (1 - alpha) * (l[t-1] + b[t-1])
-        b[t] = beta * (l[t] - l[t-1]) + (1 - beta) * b[t-1]
+        b[t] = beta  * (l[t] - l[t-1]) + (1 - beta) * b[t-1]
     forecasts = np.array([l[-1] + (h+1)*b[-1] for h in range(steps)])
     residuals = y[1:] - (l[:-1] + b[:-1])
     rmse = np.sqrt(np.mean(residuals**2)) if len(residuals) else 0.0
@@ -182,98 +183,102 @@ def holt_forecast(series, alpha=HOLT_ALPHA, beta=HOLT_BETA, steps=FORECAST_STEPS
     upper = forecasts + CI_Z * rmse * np.sqrt(np.arange(1, steps+1))
     return forecasts, lower, upper, rmse
 
-def parse_serial_line(line):
-    try:
-        line = line.strip()
-        if line.startswith('{'):
+def parse_serial_line(line: str) -> dict:
+    line = line.strip()
+    if not line: return None
+    if line.startswith('{'):
+        try:
             d = json.loads(line)
-            return d if all(k in d for k in SIGNALS) else None
-        parts = re.split(r'[,\t;]', line)
-        if len(parts) >= 4:
+            if all(k in d for k in SIGNALS): return d
+        except: pass
+    parts = re.split(r'[,\t;]', line)
+    if len(parts) >= 4:
+        try:
             keys = list(SIGNALS.keys())
             return {keys[i]: float(parts[i]) for i in range(4)}
-    except: pass
+        except: pass
     return None
 
-# --- STREAMLIT UI ---
-st.set_page_config(page_title="Arduino Forecast Dashboard", layout="wide")
-plt.rcParams.update({'figure.facecolor': '#0f1117', 'axes.facecolor': '#1a1d27', 'axes.edgecolor': '#2a2d3a', 'axes.labelcolor': '#aaa', 'xtick.color': '#888', 'ytick.color': '#888', 'text.color': '#ddd', 'grid.color': '#2a2d3a'})
+# ── 3. UI SETUP ─────────────────────────────────────────────────────────────
+st.set_page_config(page_title="Barangay Forecast", layout="wide")
+plt.rcParams.update({
+    'figure.facecolor': '#0f1117', 'axes.facecolor': '#1a1d27', 
+    'axes.edgecolor': '#2a2d3a', 'text.color': '#ddd', 'font.family': 'monospace'
+})
 
 st.title("📊 Barangay Sensor Forecast Dashboard")
 
-# Auto-detect Port
-detected_port = find_arduino()
+# Sidebar for controls
 st.sidebar.header("Connection")
-if detected_port:
-    st.sidebar.success(f"Detected Arduino on: {detected_port}")
+detected = auto_detect_port()
+if detected:
+    st.sidebar.success(f"Detected: {detected}")
 else:
-    st.sidebar.warning("No Arduino detected. Use Simulation mode.")
+    st.sidebar.warning("No Arduino detected.")
 
 mode = st.sidebar.radio("Mode", ["Live Arduino", "Simulation"])
-run_button = st.sidebar.toggle("Start Live Feed", value=False)
+run_toggle = st.sidebar.toggle("Start Live Feed")
 
-# Main Loop
-if run_button:
-    if 'data_history' not in st.session_state:
-        st.session_state.data_history = deque(maxlen=LIVE_BUFFER_SIZE)
+# ── 4. EXECUTION LOOP ───────────────────────────────────────────────────────
+if run_toggle:
+    # Maintain state across Streamlit reruns
+    if 'live_buffer' not in st.session_state:
+        st.session_state.live_buffer = deque(maxlen=LIVE_BUFFER_SIZE)
     
-    chart_place = st.empty()
+    plot_spot = st.empty()
     ser = None
 
     if mode == "Live Arduino":
-        if not detected_port:
+        if not detected:
             st.error("Cannot start: No Arduino found.")
             st.stop()
         try:
-            ser = serial.Serial(detected_port, 9600, timeout=1)
-            time.sleep(2)
+            ser = serial.Serial(detected, 9600, timeout=2.0)
+            time.sleep(2) # Arduino Reboot delay
         except Exception as e:
             st.error(f"Serial Error: {e}")
             st.stop()
 
     try:
         while True:
-            new_data = None
+            new_row = None
             if mode == "Simulation":
                 time.sleep(1)
-                last = st.session_state.data_history[-1] if st.session_state.data_history else {k: 25.0 for k in SIGNALS}
-                new_data = {k: last.get(k, 25.0) + np.random.normal(0, 0.2) for k in SIGNALS}
-                new_data['timestamp'] = datetime.now()
+                last = st.session_state.live_buffer[-1] if st.session_state.live_buffer else {k: 25.0 for k in SIGNALS}
+                new_row = {k: last.get(k, 25.0) + np.random.normal(0, 0.2) for k in SIGNALS}
+                new_row['timestamp'] = datetime.now()
             elif ser and ser.in_waiting > 0:
-                line = ser.readline().decode('utf-8', errors='replace')
-                parsed = parse_serial_line(line)
+                raw = ser.readline().decode('utf-8', errors='replace')
+                parsed = parse_serial_line(raw)
                 if parsed:
-                    new_data = {**parsed, 'timestamp': datetime.now()}
+                    new_row = {**parsed, 'timestamp': datetime.now()}
 
-            if new_data:
-                st.session_state.data_history.append(new_data)
-                df = pd.DataFrame(list(st.session_state.data_history)).set_index('timestamp')
+            if new_row:
+                st.session_state.live_buffer.append(new_row)
+                df = pd.DataFrame(list(st.session_state.live_buffer)).set_index('timestamp')
                 
-                # Plotting (Exactly like Notebook)
+                # Plotting logic matching notebook visuals
                 fig = plt.figure(figsize=(15, 10))
-                gs = gridspec.GridSpec(2, 2, hspace=0.3, wspace=0.2)
+                gs = gridspec.GridSpec(2, 2, hspace=0.35, wspace=0.25)
                 
                 for idx, (col, cfg) in enumerate(SIGNALS.items()):
                     ax = fig.add_subplot(gs[idx//2, idx%2])
-                    # Take last 100 points for visibility
-                    sub_df = df[col].tail(100)
-                    fc, lo, hi, _ = holt_forecast(df[col].values)
+                    hist_data = df[col].tail(100)
+                    fc, lo, hi, rmse = holt_forecast(df[col].values)
                     
-                    # Timestamps for forecast
+                    # Generate future time index
                     future_ts = pd.date_range(df.index[-1], periods=FORECAST_STEPS+1, freq='5min')[1:]
                     
-                    ax.plot(sub_df.index, sub_df.values, color=cfg['color'], label="Actual")
+                    ax.plot(hist_data.index, hist_data.values, color=cfg['color'], label="Actual")
                     ax.plot(future_ts, fc, '--', color=cfg['color'], alpha=0.8, label="Forecast")
                     ax.fill_between(future_ts, lo, hi, color=cfg['color'], alpha=0.1)
                     ax.set_title(f"{cfg['label']}: {df[col].iloc[-1]:.1f}{cfg['unit']}")
                     ax.xaxis.set_major_formatter(mdates.DateFormatter('%H:%M'))
-                    ax.grid(True, alpha=0.2)
+                    ax.grid(True, alpha=0.3)
                 
-                chart_place.pyplot(fig)
+                plot_spot.pyplot(fig)
                 plt.close(fig)
-
-            time.sleep(0.05)
-    except Exception as e:
-        st.error(f"Runtime Error: {e}")
+            
+            time.sleep(0.1)
     finally:
         if ser: ser.close()
