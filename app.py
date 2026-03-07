@@ -339,6 +339,20 @@ def detect_sites_and_labels(df: pd.DataFrame) -> tuple[list[str], dict, dict]:
     return codes, code_to_label, label_to_code
 
 
+if uploaded is not None:
+    raw = pd.read_csv(uploaded)
+    raw["timestamp"] = pd.to_datetime(raw["timestamp"])
+else:
+    # Use the df_hist you loaded at the beginning of the script
+    raw = df_hist 
+
+# 2. NOW CALL THE SITE DETECTION
+if not raw.empty:
+    site_codes, CODE2LABEL, LABEL2CODE = detect_sites_and_labels(raw)
+else:
+    st.error("No data available to detect sites.")
+    st.stop()
+    
 site_codes, CODE2LABEL, LABEL2CODE = detect_sites_and_labels(raw)
 
 # ---------- Signals & helpers ----------
