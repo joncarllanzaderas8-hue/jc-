@@ -134,99 +134,71 @@ import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
 import matplotlib.gridspec as gridspec
-import serial
-import serial.tools.list_ports
-import json
-import re
-import time
-from datetime import datetime
 from collections import deque
+from datetime import datetime
+import serial
+import json
+import threading
+import time
 
-# ── 1. GLOBAL CONFIGURATION (Copied exactly from your notebook) ──────────────
+# ── Sensor Config ───────────────────────────────
 SIGNALS = {
     'tempC':    {'label': 'Temperature',   'unit': '°C',  'color': '#ff6b6b', 'warn': 35,  'ylim': (24, 40)},
     'humidity': {'label': 'Humidity',      'unit': '%',   'color': '#4ecdc4', 'warn': 90,  'ylim': (55, 105)},
     'mqRaw':    {'label': 'MQ Gas Sensor', 'unit': 'raw', 'color': '#ffd93d', 'warn': 350, 'ylim': (50, 550)},
-    'aqi':      {'label': 'AQI',           'unit': '',    'color': '#6bcb77', 'warn': 50,  'ylim': (0, 80)},
+    'aqi':      {'label': 'AQI',           'unit': '',    'color': '#6bcb77', 'warn': 150, 'ylim': (0, 200)}
 }
 
-FORECAST_STEPS   = 48       
-HOLT_ALPHA       = 0.30     
-HOLT_BETA        = 0.15     
-CI_Z             = 1.645    
-MIN_OBS_FORECAST = 10       
-LIVE_BUFFER_SIZE = 2000     
+FORECAST_STEPS = 48
+HOLT_ALPHA = 0.4
+HOLT_BETA = 0.2
+LIVE_BUFFER_SIZE = 500
 
-# ── 2. LOGIC HELPERS (Exact algorithms from your notebook) ──────────────────
+# ── Live Buffer ────────────────────────────────
+live_buffer = deque(maxlen=LIVE_BUFFER_SIZE)
+
+# ── Holt Forecast Function ─────────────────────
 def holt_forecast(series, alpha=HOLT_ALPHA, beta=HOLT_BETA, steps=FORECAST_STEPS):
-    y = np.array(series, dtype=float)
-    n = len(y)
-    if n < 2:
-        return np.full(steps, y[-1]), np.full(steps, y[-1]), np.full(steps, y[-1]), 0.0
-
-    l = np.zeros(n); b = np.zeros(n)
-    l[0] = y[0];     b[0] = y[1] - y[0]
-
-    for t in range(1, n):
-        l[t] = alpha * y[t] + (1 - alpha) * (l[t-1] + b[t-1])
-        b[t] = beta  * (l[t] - l[t-1]) + (1 - beta) * b[t-1]
-
-    forecasts = np.array([l[-1] + (h+1)*b[-1] for h in range(steps)])
-    residuals = y[1:] - (l[:-1] + b[:-1])
-    rmse      = np.sqrt(np.mean(residuals**2)) if len(residuals) else 0.0
-    lower = forecasts - CI_Z * rmse * np.sqrt(np.arange(1, steps+1))
-    upper = forecasts + CI_Z * rmse * np.sqrt(np.arange(1, steps+1))
+    level = series[0]
+    trend = series[1] - series[0]
+    levels = []
+    trends = []
+    for y in series:
+        prev_level = level
+        level = alpha*y + (1-alpha)*(level+trend)
+        trend = beta*(level-prev_level) + (1-beta)*trend
+        levels.append(level)
+        trends.append(trend)
+    forecasts = np.array([level+(i+1)*trend for i in range(steps)])
+    residuals = series - np.array(levels)
+    rmse = np.sqrt(np.mean(residuals**2))
+    conf = 1.64 * rmse
+    lower = forecasts - conf
+    upper = forecasts + conf
     return forecasts, lower, upper, rmse
 
-def parse_serial_line(line: str) -> dict | None:
-    line = line.strip()
-    if not line: return None
-    if line.startswith('{'):
-        try:
-            d = json.loads(line)
-            if all(k in d for k in SIGNALS): return d
-        except: pass
-    parts = re.split(r'[,\t;]', line)
-    if len(parts) >= 4:
-        try:
-            keys = list(SIGNALS.keys())
-            return {keys[i]: float(parts[i]) for i in range(4)}
-        except: pass
-    return None
+# ── Dashboard Plot ─────────────────────────────
+def render_dashboard():
+    if len(live_buffer) < 2:
+        st.write("⏳ Waiting for data from Arduino...")
+        return
 
-# ── 3. STREAMLIT UI SETUP ──────────────────────────────────────────────────
-st.set_page_config(page_title="Arduino Real-Time Forecast", layout="wide")
-
-# Apply the dark theme style to Matplotlib
-plt.rcParams.update({
-    'figure.facecolor': '#0f1117', 'axes.facecolor': '#1a1d27',
-    'axes.edgecolor': '#2a2d3a', 'axes.labelcolor': '#aaa',
-    'xtick.color': '#888', 'ytick.color': '#888',
-    'text.color': '#ddd', 'grid.color': '#2a2d3a',
-    'font.family': 'monospace',
-})
-
-st.title("🌡️ Arduino Sensor — Real-Time Forecasting")
-
-# Sidebar for controls
-st.sidebar.header("Connection Settings")
-port_list = [p.device for p in serial.tools.list_ports.comports()]
-selected_port = st.sidebar.selectbox("Select Serial Port", ["Simulation"] + port_list)
-run_button = st.sidebar.toggle("Start Forecasting Loop")
-
-# ── 4. LIVE DASHBOARD RENDERER ──────────────────────────────────────────────
-def render_st_dashboard(live_buf, placeholder, new_row=None, alerts=None):
-    df_live = pd.DataFrame(list(live_buf)).set_index('timestamp')
+    df_live = pd.DataFrame(list(live_buffer)).set_index('timestamp')
     df_live = df_live[list(SIGNALS.keys())].apply(pd.to_numeric, errors='coerce').dropna()
-    
     if len(df_live) < 2:
         return
 
     last_ts = df_live.index[-1]
     future_idx = pd.date_range(last_ts + pd.Timedelta('5min'), periods=FORECAST_STEPS, freq='5min')
-    
-    fig = plt.figure(figsize=(15, 10))
-    gs = gridspec.GridSpec(2, 2, figure=fig, hspace=0.4, wspace=0.2)
+
+    fig = plt.figure(figsize=(18, 15), facecolor='#0f1117')
+    now_str = datetime.now().strftime('%H:%M:%S')
+    obs_str = f"{len(df_live)} obs"
+    fc_end = future_idx[-1].strftime('%H:%M')
+    title = f"⚡ LIVE Arduino Sensor Forecast  |  {now_str}  |  {obs_str}  |  horizon → {fc_end}"
+    fig.suptitle(title, color='#6bcb77', fontsize=13, fontweight='bold', y=0.995)
+
+    gs = gridspec.GridSpec(2, 2, figure=fig, hspace=0.50, wspace=0.32)
     HIST = min(len(df_live), 72)
 
     for idx, (col, cfg) in enumerate(SIGNALS.items()):
@@ -234,73 +206,63 @@ def render_st_dashboard(live_buf, placeholder, new_row=None, alerts=None):
         ser = df_live[col].iloc[-HIST:]
         fc, lo, hi, rmse = holt_forecast(df_live[col].values)
 
-        ax.plot(ser.index, ser.values, color=cfg['color'], lw=1.8, label='Observed')
-        ax.plot(future_idx, fc, color=cfg['color'], lw=2.0, ls='--', label='Forecast')
-        ax.fill_between(future_idx, lo, hi, color=cfg['color'], alpha=0.15)
+        ax.plot(ser.index, ser.values, color=cfg['color'], lw=1.8, label='Observed', zorder=3)
+        ax.plot(future_idx, fc, color=cfg['color'], lw=2.0, ls='--', label='Forecast', zorder=5)
+        ax.fill_between(future_idx, lo, hi, color=cfg['color'], alpha=0.18, label='90% CI', zorder=2)
         ax.axvline(last_ts, color='white', lw=0.7, ls=':', alpha=0.4)
-        ax.axhline(cfg['warn'], color='#ff6b6b', lw=0.8, ls='--', alpha=0.5)
+        warn_val = cfg['warn']
+        ax.axhline(warn_val, color='#ff6b6b', lw=0.8, ls='--', alpha=0.5)
 
         latest = df_live[col].iloc[-1]
-        ax.set_title(f"{cfg['label']}: {latest:.1f}{cfg['unit']}", color=cfg['color'], fontweight='bold')
+        warn = latest > warn_val
+        badge_col = '#ff6b6b' if warn else cfg['color']
+
+        ax.set_title(f"{cfg['label']}  ·  now: {latest:.1f} {cfg['unit']}" + ("  ⚠" if warn else ""),
+                     color=badge_col, fontsize=11, fontweight='bold', pad=7)
+
+        ax.annotate(f"{fc[-1]:.1f}{cfg['unit']}", xy=(future_idx[-1], fc[-1]), xytext=(-50,6),
+                    textcoords='offset points', color=cfg['color'], fontsize=9, fontweight='bold',
+                    arrowprops=dict(arrowstyle='->', color=cfg['color'], lw=0.8))
+
         ax.set_ylim(cfg['ylim'])
+        ax.set_xlabel('Time', fontsize=9)
         ax.xaxis.set_major_formatter(mdates.DateFormatter('%H:%M'))
+        ax.xaxis.set_major_locator(mdates.HourLocator(interval=1))
         ax.grid(True)
+        rmse_txt = f"RMSE {rmse:.2f}"
+        ax.legend(fontsize=7, framealpha=0.25, facecolor='#222', edgecolor='#444', labelcolor='white',
+                  loc='upper left', title=rmse_txt, title_fontsize=7)
 
-    # Display the figure in the specific Streamlit placeholder
-    placeholder.pyplot(fig)
-    plt.close(fig)
+    st.pyplot(fig)
 
-# ── 5. MAIN EXECUTION LOOP ──────────────────────────────────────────────────
-if run_button:
-    # Initialize Buffer
-    if 'live_buffer' not in st.session_state:
-        st.session_state.live_buffer = deque(maxlen=LIVE_BUFFER_SIZE)
-    
-    plot_placeholder = st.empty()
-    status_text = st.sidebar.empty()
-    
-    # Handle Serial Connection
-    ser = None
-    if selected_port != "Simulation":
-        try:
-            ser = serial.Serial(selected_port, 9600, timeout=1)
-            time.sleep(2) # Arduino Reset
-        except Exception as e:
-            st.error(f"Failed to connect: {e}")
-            run_button = False
-
-    # The Loop
+# ── Arduino Serial Reading ─────────────────────
+def read_serial(port='COM5', baud=9600):
     try:
+        ser = serial.Serial(port, baud, timeout=1)
         while True:
-            new_row = None
-            
-            if selected_port == "Simulation":
-                # Generate fake data (Matching your notebook's simulation logic)
-                time.sleep(1)
-                last_val = st.session_state.live_buffer[-1] if st.session_state.live_buffer else {k: 25.0 for k in SIGNALS}
-                row = {k: last_val.get(k, 25.0) + np.random.normal(0, 0.1) for k in SIGNALS}
-                new_row = {'timestamp': datetime.now(), **row}
-            else:
-                if ser and ser.in_waiting > 0:
-                    raw = ser.readline().decode('utf-8', errors='replace')
-                    parsed = parse_serial_line(raw)
-                    if parsed:
-                        new_row = {'timestamp': datetime.now(), **parsed}
-
-            if new_row:
-                st.session_state.live_buffer.append(new_row)
-                alerts = [f"{SIGNALS[k]['label']} high!" for k, v in new_row.items() if k in SIGNALS and v > SIGNALS[k]['warn']]
-                
-                # Update Dashboard
-                render_st_dashboard(st.session_state.live_buffer, plot_placeholder, new_row, alerts)
-                status_text.write(f"Last update: {new_row['timestamp'].strftime('%H:%M:%S')}")
-            
-            if not run_button: break
-            time.sleep(0.1)
-
+            line = ser.readline().decode('utf-8').strip()
+            if line:
+                try:
+                    data = json.loads(line)
+                    data['timestamp'] = pd.to_datetime(data['timestamp'])
+                    live_buffer.append(data)
+                except:
+                    continue
     except Exception as e:
-        st.error(f"Loop Error: {e}")
-    finally:
-        if ser: ser.close()
-else:
-    st.info("Adjust settings in the sidebar and toggle 'Start' to begin visualization.")
+        st.error(f"Serial Error: {e}")
+
+# ── Streamlit App ─────────────────────────────
+st.title("Arduino Sensor Forecast Dashboard")
+
+arduino_port = st.text_input("Arduino COM Port", "COM5")
+baud_rate = st.number_input("Baud Rate", 9600)
+
+if st.button("Start Live Reading"):
+
+    threading.Thread(target=read_serial, args=(arduino_port, baud_rate), daemon=True).start()
+    st.success(f"Started reading from {arduino_port} at {baud_rate} baud!")
+
+# Auto-refresh the dashboard every 5 seconds
+while True:
+    render_dashboard()
+    time.sleep(5)
