@@ -103,6 +103,13 @@ with st.sidebar:
     # Expandable Instruction Guide
     with st.expander("📝 CSV Upload Guide"):
         st.markdown("""
+        **Location Flexibility:**
+        You are not limited to A, B, or C! You can enter any Barangay or Landmark name in the `Location` column.
+        
+        **Examples:** * `Salitran`
+        * `Langkaan II`
+        * `DBB-1`
+        * `SM Dasma Area`
         **Required Columns:**
         1. `timestamp`: (YYYY-MM-DD HH:MM:SS)
         2. `Location`: (A, B, or C)
@@ -164,6 +171,17 @@ import numpy as np
 import joblib
 from datetime import datetime
 
+if uploaded_file is not None:
+    raw_df = pd.read_csv(uploaded_file)
+    
+    # This line automatically finds all unique places in your CSV
+    unique_locations = raw_df['Location'].unique()
+    
+    # The user picks from the actual names found in the file
+    selected_site = st.selectbox("Select Monitoring Site", options=unique_locations)
+    
+    # Filter data for that specific place
+    site_df = raw_df[raw_df['Location'] == selected_site].copy()
 # -----------------------------
 # Page Configuration
 # -----------------------------
