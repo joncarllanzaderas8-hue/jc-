@@ -162,7 +162,12 @@ with st.sidebar:
     tab_choice = st.radio("View", ["Single site", "Compare sites", "City map"], index=0)
     show_residuals = st.checkbox("Show residuals panel (deep‑dive)", value=True)
 
-
+import os, json
+import streamlit as st
+import pandas as pd
+import numpy as np
+import joblib
+from datetime import datetime
 # -----------------------------
 # Page Configuration
 # -----------------------------
