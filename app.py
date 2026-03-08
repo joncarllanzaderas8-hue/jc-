@@ -134,7 +134,7 @@ with st.sidebar:
 # ---------- Sidebar controls ----------
 with st.sidebar:
     st.header("Controls")
-    uploaded = st.file_uploader("Upload sensor_log.csv", type=["csv"])
+    uploaded_file = st.file_uploader("Upload sensor_log.csv", type=["csv"])
     default_path = os.path.join("sensor_log.csv")
 
 if uploaded_file is not None:
