@@ -96,9 +96,9 @@ def generate_sample_csv():
     df_sample = pd.DataFrame(example_data)
     return df_sample.to_csv(index=False).encode('utf-8')
 
-    
-with st.expander("📝 CSV Upload Guide"):
-     st.markdown("""
+with st.sidebar:
+    with st.expander("📝 CSV Upload Guide"):
+        st.markdown("""
         **Location Flexibility:**
         You are not limited to A, B, or C! You can enter any Barangay or Landmark name in the `Location` column.
         
