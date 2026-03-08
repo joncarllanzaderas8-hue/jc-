@@ -225,10 +225,10 @@ location_mode = st.sidebar.selectbox("Monitoring Site", ["A - Green Space", "B -
 data_source = st.sidebar.radio("Data Source", ["Latest Reading", "Manual Input"])
 
 try:
-    model = joblib.load('dt_model.joblib')
+    model = joblib.load('environment_dt_model.joblib')
     label_map = {0: "Normal", 1: "Moderate", 2: "High"}
 except:
-    st.error("Model 'dt_model.joblib' not found.")
+    st.error("Model 'environment_dt_model.joblib' not found.")
     st.stop()
     
 # -----------------------------
