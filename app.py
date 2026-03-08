@@ -16,6 +16,12 @@ from preprocessing import preprocess_site, SITE_NAME  # retains your A/B/C defau
 from des import holt_forecast, tune_holt
 from aqi import categorize_aqi  # EPA AQI categorizer (index -> (label, color))
 
+df = pd.DataFrame() 
+
+# Now your existing logic...
+COORDS_JSON = "site_coords.json"
+REALTIME_CSV = 'sensor_realtime.csv'
+
 # --- 3. MULTI-VARIABLE CHARTING (Collapsible) ---
 with st.expander("📊 View Detailed Environmental Trends", expanded=False):
     if not df.empty:
