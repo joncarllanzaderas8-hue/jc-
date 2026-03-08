@@ -111,6 +111,50 @@ with st.sidebar:
     tab_choice = st.radio("View", ["Single site", "Compare sites", "City map"], index=0)
     show_residuals = st.checkbox("Show residuals panel (deep‑dive)", value=True)
 
+import pandas as pd
+import io
+
+# --- 1. Create a Sample Template for Users to Download ---
+def generate_sample_csv():
+    example_data = {
+        "timestamp": ["2024-05-20 10:00:00", "2024-05-20 10:05:00", "2024-05-20 10:10:00"],
+        "Location": ["A", "A", "A"],
+        "tempC": [30.5, 30.7, 31.0],
+        "humidity": [70, 71, 72],
+        "aqi": [42.1, 43.5, 44.0],
+        "mqRaw": [105, 108, 110]
+    }
+    df_sample = pd.DataFrame(example_data)
+    return df_sample.to_csv(index=False).encode('utf-8')
+
+# --- 2. Sidebar Implementation ---
+with st.sidebar:
+    st.header("📂 Data Management")
+    
+    # Expandable Instruction Guide
+    with st.expander("📝 CSV Upload Guide"):
+        st.markdown("""
+        **Required Columns:**
+        1. `timestamp`: (YYYY-MM-DD HH:MM:SS)
+        2. `Location`: (A, B, or C)
+        3. `tempC`: Temperature in Celsius
+        4. `humidity`: Humidity % (0-100)
+        5. `aqi`: Air Quality Index value
+        
+        **Notes:** * Use **5-minute intervals** for best forecast accuracy.
+        * Ensure no empty rows between data points.
+        """)
+        
+        # Download button for the template
+        st.download_button(
+            label="📥 Download CSV Template",
+            data=generate_sample_csv(),
+            file_name="sensor_log_template.csv",
+            mime="text/csv",
+        )
+
+    st.divider()
+
 import os, json
 import streamlit as st
 import pandas as pd
