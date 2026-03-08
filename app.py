@@ -87,11 +87,11 @@ import io
 def generate_sample_csv():
     example_data = {
         "timestamp": ["2024-05-20 10:00:00", "2024-05-20 10:05:00", "2024-05-20 10:10:00"],
-        "Location": ["Paliparan III", "Salawag"],
-        "tempC": [30.5, 30.7, 31.0],
-        "humidity": [70, 71, 72],
-        "aqi": [42.1, 43.5, 44.0],
-        "mqRaw": [105, 108, 110]
+        "Location": ["Salitran", "Salitran", "Salitran"], # 3 items
+        "tempC": [30.5, 30.7, 31.0],                     # 3 items
+        "humidity": [70, 71, 72],                        # 3 items
+        "aqi": [42.1, 43.5, 44.0],                       # 3 items
+        "mqRaw": [105, 108, 110]                         # 3 items
     }
     df_sample = pd.DataFrame(example_data)
     return df_sample.to_csv(index=False).encode('utf-8')
