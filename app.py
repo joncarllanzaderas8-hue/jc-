@@ -87,7 +87,7 @@ import io
 def generate_sample_csv():
     example_data = {
         "timestamp": ["2024-05-20 10:00:00", "2024-05-20 10:05:00", "2024-05-20 10:10:00"],
-        "Location": ["A", "A", "A"],
+        "Location": ["Paliparan III", "Salawag"],
         "tempC": [30.5, 30.7, 31.0],
         "humidity": [70, 71, 72],
         "aqi": [42.1, 43.5, 44.0],
@@ -137,6 +137,18 @@ with st.sidebar:
     uploaded = st.file_uploader("Upload sensor_log.csv", type=["csv"])
     default_path = os.path.join("sensor_log.csv")
 
+    if uploaded_file is not None:
+    raw_df = pd.read_csv(uploaded_file)
+    
+    # This line automatically finds all unique places in your CSV
+    unique_locations = raw_df['Location'].unique()
+    
+    # The user picks from the actual names found in the file
+    selected_site = st.selectbox("Select Monitoring Site", options=unique_locations)
+    
+    # Filter data for that specific place
+    site_df = raw_df[raw_df['Location'] == selected_site].copy()
+
     auto_tune = st.checkbox(
         "Auto‑tune α, β per signal",
         value=False,
@@ -171,17 +183,6 @@ import numpy as np
 import joblib
 from datetime import datetime
 
-if uploaded_file is not None:
-    raw_df = pd.read_csv(uploaded_file)
-    
-    # This line automatically finds all unique places in your CSV
-    unique_locations = raw_df['Location'].unique()
-    
-    # The user picks from the actual names found in the file
-    selected_site = st.selectbox("Select Monitoring Site", options=unique_locations)
-    
-    # Filter data for that specific place
-    site_df = raw_df[raw_df['Location'] == selected_site].copy()
 # -----------------------------
 # Page Configuration
 # -----------------------------
