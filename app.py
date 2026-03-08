@@ -137,18 +137,6 @@ with st.sidebar:
     uploaded_file = st.file_uploader("Upload sensor_log.csv", type=["csv"])
     default_path = os.path.join("sensor_log.csv")
 
-if uploaded_file is not None:
-    raw_df = pd.read_csv(uploaded_file)
-    
-    # This line automatically finds all unique places in your CSV
-    unique_locations = raw_df['Location'].unique()
-    
-    # The user picks from the actual names found in the file
-    selected_site = st.selectbox("Select Monitoring Site", options=unique_locations)
-    
-    # Filter data for that specific place
-    site_df = raw_df[raw_df['Location'] == selected_site].copy()
-
     auto_tune = st.checkbox(
         "Auto‑tune α, β per signal",
         value=False,
