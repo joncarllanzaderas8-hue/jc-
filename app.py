@@ -21,6 +21,48 @@ COORDS_JSON = "site_coords.json"
 df = pd.DataFrame()
 REALTIME_CSV = 'sensor_realtime.csv'
 
+# Read historical log and optional realtime feed separately
+
+df_hist = pd.DataFrame()
+df_live = pd.DataFrame()
+
+try:
+    if os.path.exists('sensor_log.csv'):
+        df_hist = pd.read_csv('sensor_log.csv')
+        # convert types
+        for c in ['tempC','humidity','aqi']:
+            if c in df_hist.columns:
+                df_hist[c] = pd.to_numeric(df_hist[c], errors='coerce')
+        if 'timestamp' in df_hist.columns:
+            df_hist['timestamp'] = pd.to_datetime(df_hist['timestamp'], errors='coerce')
+            df_hist = df_hist.sort_values(by='timestamp')
+            df_hist = df_hist.dropna(subset=['timestamp'])
+except Exception as e:
+    print(f"Error reading sensor_log.csv: {e}")
+try:
+
+    if os.path.exists(REALTIME_CSV):
+        df_live = pd.read_csv(REALTIME_CSV)
+        for c in ['tempC','humidity','aqi']:
+            if c in df_live.columns:
+                df_live[c] = pd.to_numeric(df_live[c], errors='coerce')
+        if 'timestamp' in df_live.columns:
+            df_live['timestamp'] = pd.to_datetime(df_live['timestamp'], errors='coerce')
+            df_live = df_live.sort_values(by='timestamp')
+        df_live = df_live.dropna(subset=['timestamp'])
+
+except Exception as e:
+    print(f"Error reading {REALTIME_CSV}: {e}")
+
+
+# Default dataframe used for plotting/historical views — combine history + live if available
+if not df_live.empty and not df_hist.empty:
+    df = pd.concat([df_hist, df_live], ignore_index=True).sort_values('timestamp')
+elif not df_live.empty:
+    df = df_live.copy()
+else:
+    df = df_hist.copy()
+
 # --- 3. MULTI-VARIABLE CHARTING (Collapsible) ---
 with st.expander("📊 View Detailed Environmental Trends", expanded=False):
     if not df.empty:
