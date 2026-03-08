@@ -16,3 +16,5 @@ pyserial
 pandas
 numpy
 matplotlib
+streamlit
+streamlit-autorefresh
