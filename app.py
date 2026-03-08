@@ -137,7 +137,7 @@ with st.sidebar:
     uploaded = st.file_uploader("Upload sensor_log.csv", type=["csv"])
     default_path = os.path.join("sensor_log.csv")
 
-    if uploaded_file is not None:
+if uploaded_file is not None:
     raw_df = pd.read_csv(uploaded_file)
     
     # This line automatically finds all unique places in your CSV
