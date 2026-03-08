@@ -79,37 +79,6 @@ with st.sidebar:
         st.table(pd.DataFrame(aqi_data))
         
         st.caption("*Unhealthy for Sensitive Groups")
-# ---------- Sidebar controls ----------
-with st.sidebar:
-    st.header("Controls")
-    uploaded = st.file_uploader("Upload sensor_log.csv", type=["csv"])
-    default_path = os.path.join("sensor_log.csv")
-
-    auto_tune = st.checkbox(
-        "Auto‑tune α, β per signal",
-        value=False,
-        help="Grid search per site & per signal to minimize RMSE",
-    )
-    alpha = st.slider("Alpha (level)", 0.05, 0.9, 0.30, 0.05, disabled=auto_tune)
-    beta = st.slider("Beta (trend)", 0.05, 0.9, 0.15, 0.05, disabled=auto_tune)
-
-    history_hours = st.slider("History window (hours)", 3, 24, 6, 1)
-    steps = st.select_slider(
-        "Forecast horizon",
-        options=[12, 24, 36, 48],
-        value=48,
-        help="steps × 5 min (48 = 4 hours)",
-    )
-
-    cat_scale = st.selectbox(
-    "Category scale",
-    ["EPA AQI (uses AQI value)", "PAGASA Heat Index (Celsius)"],
-    index=0,
-    help="EPA uses the AQI value (0-500); PAGASA uses the Heat Index categories (Caution to Extreme Danger)."
-)
-
-    tab_choice = st.radio("View", ["Single site", "Compare sites", "City map"], index=0)
-    show_residuals = st.checkbox("Show residuals panel (deep‑dive)", value=True)
 
 import pandas as pd
 import io
@@ -154,6 +123,39 @@ with st.sidebar:
         )
 
     st.divider()
+    
+# ---------- Sidebar controls ----------
+with st.sidebar:
+    st.header("Controls")
+    uploaded = st.file_uploader("Upload sensor_log.csv", type=["csv"])
+    default_path = os.path.join("sensor_log.csv")
+
+    auto_tune = st.checkbox(
+        "Auto‑tune α, β per signal",
+        value=False,
+        help="Grid search per site & per signal to minimize RMSE",
+    )
+    alpha = st.slider("Alpha (level)", 0.05, 0.9, 0.30, 0.05, disabled=auto_tune)
+    beta = st.slider("Beta (trend)", 0.05, 0.9, 0.15, 0.05, disabled=auto_tune)
+
+    history_hours = st.slider("History window (hours)", 3, 24, 6, 1)
+    steps = st.select_slider(
+        "Forecast horizon",
+        options=[12, 24, 36, 48],
+        value=48,
+        help="steps × 5 min (48 = 4 hours)",
+    )
+
+    cat_scale = st.selectbox(
+    "Category scale",
+    ["EPA AQI (uses AQI value)", "PAGASA Heat Index (Celsius)"],
+    index=0,
+    help="EPA uses the AQI value (0-500); PAGASA uses the Heat Index categories (Caution to Extreme Danger)."
+)
+
+    tab_choice = st.radio("View", ["Single site", "Compare sites", "City map"], index=0)
+    show_residuals = st.checkbox("Show residuals panel (deep‑dive)", value=True)
+
 
 import os, json
 import streamlit as st
