@@ -106,10 +106,12 @@ with st.sidebar:
         **Location Flexibility:**
         You are not limited to A, B, or C! You can enter any Barangay or Landmark name in the `Location` column.
         
-        **Examples:** * `Salitran`
+        **Examples:** 
+        * `Salitran`
         * `Langkaan II`
         * `DBB-1`
         * `SM Dasma Area`
+        
         **Required Columns:**
         1. `timestamp`: (YYYY-MM-DD HH:MM:SS)
         2. `Location`: (A, B, or C)
