@@ -140,9 +140,6 @@ with st.sidebar:
 
 if uploaded_file is not None:
     raw_df = pd.read_csv(uploaded_file)
-
-if uploaded_file is not None:
-    raw = pd.read_csv(uploaded_file)
     
     # Generate site_codes dynamically from the uploaded file
     site_codes = list(raw["Location"].unique())
