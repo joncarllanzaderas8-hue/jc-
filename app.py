@@ -205,7 +205,7 @@ risk_level = label_map.get(int(model.predict([[temp, hum, aqi]])[0]), "Unknown")
 # -----------------------------
 # Main Display (The "Big Four" Metrics)
 # -----------------------------
-st.markdown("### 📡 Current Environmental Status")
+st.markdown("### 📡 Recent Environmental Status")
 
 # Create 4 columns for the primary sensor data
 m1, m2, m3, m4 = st.columns(4)
