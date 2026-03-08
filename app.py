@@ -136,30 +136,9 @@ with st.sidebar:
     st.header("Controls")
     uploaded_file = st.file_uploader("Upload sensor_log.csv", type=["csv"])
     default_path = os.path.join("sensor_log.csv")
-    tab_choice = st.radio("View", ["Single site", "Compare sites", "City map"], index=0)
 
 if uploaded_file is not None:
     raw_df = pd.read_csv(uploaded_file)
-    
-    # Generate site_codes dynamically from the uploaded file
-    site_codes = list(raw["Location"].unique())
-    CODE2LABEL = {c: f"Site {c}" for c in site_codes} # Or use your SITE_NAME mapping
-    LABEL2CODE = {v: k for k, v in CODE2LABEL.items()}
-
-    # 3. MAIN DISPLAY LOGIC (Now tab_choice is safe to use)
-    if tab_choice == "Single site":
-        site_choice = st.selectbox("Site", options=[CODE2LABEL[c] for c in site_codes])
-        site_code = LABEL2CODE[site_choice]
-
-        bundle = process_site(raw, site_code, steps, alpha, beta, auto_tune)
-        
-        if bundle is None:
-            st.error("No rows found for the selected site.")
-            st.stop()
-        
-        # ... rest of your display code
-else:
-    st.info("💡 Please upload a sensor log CSV file in the sidebar to view the dashboard.")
     
     # This line automatically finds all unique places in your CSV
     unique_locations = raw_df['Location'].unique()
