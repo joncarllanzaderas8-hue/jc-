@@ -16,118 +16,70 @@ from preprocessing import preprocess_site, SITE_NAME  # retains your A/B/C defau
 from des import holt_forecast, tune_holt
 from aqi import categorize_aqi  # EPA AQI categorizer (index -> (label, color))
 
-COORDS_JSON = "site_coords.json"
+# --- 3. MULTI-VARIABLE CHARTING (Collapsible) ---
+with st.expander("📊 View Detailed Environmental Trends", expanded=False):
+    if not df.empty:
+        # Create figure with a secondary y-axis
+        fig = make_subplots(specs=[[{"secondary_y": True}]])
 
-df = pd.DataFrame()
-REALTIME_CSV = 'sensor_realtime.csv'
-
-# Read historical log and optional realtime feed separately
-df_hist = pd.DataFrame()
-df_live = pd.DataFrame()
-try:
-    if os.path.exists('sensor_log.csv'):
-        df_hist = pd.read_csv('sensor_log.csv')
-        # convert types
-        for c in ['tempC','humidity','aqi']:
-            if c in df_hist.columns:
-                df_hist[c] = pd.to_numeric(df_hist[c], errors='coerce')
-        if 'timestamp' in df_hist.columns:
-            df_hist['timestamp'] = pd.to_datetime(df_hist['timestamp'], errors='coerce')
-            df_hist = df_hist.sort_values(by='timestamp')
-        df_hist = df_hist.dropna(subset=['timestamp'])
-except Exception as e:
-    print(f"Error reading sensor_log.csv: {e}")
-
-try:
-    if os.path.exists(REALTIME_CSV):
-        df_live = pd.read_csv(REALTIME_CSV)
-        for c in ['tempC','humidity','aqi']:
-            if c in df_live.columns:
-                df_live[c] = pd.to_numeric(df_live[c], errors='coerce')
-        if 'timestamp' in df_live.columns:
-            df_live['timestamp'] = pd.to_datetime(df_live['timestamp'], errors='coerce')
-            df_live = df_live.sort_values(by='timestamp')
-        df_live = df_live.dropna(subset=['timestamp'])
-except Exception as e:
-    print(f"Error reading {REALTIME_CSV}: {e}")
-
-# Default dataframe used for plotting/historical views — combine history + live if available
-if not df_live.empty and not df_hist.empty:
-    df = pd.concat([df_hist, df_live], ignore_index=True).sort_values('timestamp')
-elif not df_live.empty:
-    df = df_live.copy()
-else:
-    df = df_hist.copy()
-
-# --- 3. MULTI-VARIABLE CHARTING ---
-if not df.empty:
-    # Create figure with a secondary y-axis to handle different scales
-    fig = make_subplots(specs=[[{"secondary_y": True}]])
-
-    # Add Temperature (Left Axis)
-    if 'timestamp' in df.columns and 'tempC' in df.columns:
-        fig.add_trace(
-            go.Scatter(x=df['timestamp'], y=df['tempC'], name="Temp (°C)", 
-                       line=dict(color='#ff4b4b', width=2)),
-            secondary_y=False,
-        )
-
-    # Add Humidity (Left Axis)
-    if 'timestamp' in df.columns and 'humidity' in df.columns:
-        fig.add_trace(
-            go.Scatter(x=df['timestamp'], y=df['humidity'], name="Humidity (%)", 
-                       line=dict(color='#ffa500', width=2)),
-            secondary_y=False,
-        )
-
-    # Add AQI (Right Axis) - This prevents AQI from squashing the Temp line
-    if 'timestamp' in df.columns and 'aqi' in df.columns:
-        fig.add_trace(
-            go.Scatter(x=df['timestamp'], y=df['aqi'], name="AQI (index)", 
-                       line=dict(color='#00d4ff', width=2)),
-            secondary_y=True,
-        )
-
-    # Add Forecasted points (Dotted lines) if they exist in your data
-    if 'AQI forecast (+30m)' in df.columns and 'timestamp' in df.columns:
-        fig.add_trace(
-            go.Scatter(x=df['timestamp'], y=df['AQI forecast (+30m)'], 
-                       name="AQI Forecast", line=dict(color='#00d4ff', dash='dot')),
-            secondary_y=True,
-        )
-# Style the layout for the Dark Theme
-    fig.update_layout(
-        template="plotly_dark",
-        title="Dasmariñas Environmental Trends",
-        hovermode="x unified",
-        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
-    )
-
-    # Set axis titles
-    fig.update_yaxes(title_text="Temperature (°C)", secondary_y=False)
-    fig.update_yaxes(title_text="AQI (MQ135)", secondary_y=True)
-    
-    # prediction confidence annotation (if available)
-    try:
-        if pred_conf is not None:
-            if pred_conf >= 0.8:
-                conf_bg = "#2ecc71"
-            elif pred_conf >= 0.6:
-                conf_bg = "#f1c40f"
-            else:
-                conf_bg = "#e74c3c"
-            fig.add_annotation(
-                text=f"Prediction confidence: {pred_conf:.0%}",
-                xref='paper', yref='paper', x=0.99, y=0.95,
-                showarrow=False, bgcolor=conf_bg, font=dict(color='black')
+        # Add Temperature (Left Axis)
+        if 'timestamp' in df.columns and 'tempC' in df.columns:
+            fig.add_trace(
+                go.Scatter(x=df['timestamp'], y=df['tempC'], name="Temp (°C)", 
+                           line=dict(color='#ff4b4b', width=2)),
+                secondary_y=False,
             )
-    except Exception:
-        pass
 
-    st.plotly_chart(fig, width='stretch')
-else:
-    st.warning("Waiting for valid data to display the chart...")
-df_hist = df.copy()
+        # Add Humidity (Left Axis)
+        if 'timestamp' in df.columns and 'humidity' in df.columns:
+            fig.add_trace(
+                go.Scatter(x=df['timestamp'], y=df['humidity'], name="Humidity (%)", 
+                           line=dict(color='#ffa500', width=2)),
+                secondary_y=False,
+            )
+
+        # Add AQI (Right Axis)
+        if 'timestamp' in df.columns and 'aqi' in df.columns:
+            fig.add_trace(
+                go.Scatter(x=df['timestamp'], y=df['aqi'], name="AQI (index)", 
+                           line=dict(color='#00d4ff', width=2)),
+                secondary_y=True,
+            )
+
+        # Add Forecasted points
+        if 'AQI forecast (+30m)' in df.columns and 'timestamp' in df.columns:
+            fig.add_trace(
+                go.Scatter(x=df['timestamp'], y=df['AQI forecast (+30m)'], 
+                           name="AQI Forecast", line=dict(color='#00d4ff', dash='dot')),
+                secondary_y=True,
+            )
+
+        # Style the layout
+        fig.update_layout(
+            template="plotly_dark",
+            title="Dasmariñas Environmental Trends",
+            hovermode="x unified",
+            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
+        )
+
+        fig.update_yaxes(title_text="Temperature (°C)", secondary_y=False)
+        fig.update_yaxes(title_text="AQI (MQ135)", secondary_y=True)
+        
+        # Prediction confidence annotation
+        try:
+            if 'pred_conf' in locals() and pred_conf is not None:
+                conf_bg = "#2ecc71" if pred_conf >= 0.8 else ("#f1c40f" if pred_conf >= 0.6 else "#e74c3c")
+                fig.add_annotation(
+                    text=f"Prediction confidence: {pred_conf:.0%}",
+                    xref='paper', yref='paper', x=0.99, y=0.95,
+                    showarrow=False, bgcolor=conf_bg, font=dict(color='black')
+                )
+        except Exception:
+            pass
+
+        st.plotly_chart(fig, use_container_width=True)
+    else:
+        st.warning("Waiting for valid data to display the chart...")
 
 with st.sidebar:
     with st.expander("📖 Dashboard User Guide"):
