@@ -1049,10 +1049,10 @@ if tab_choice == "City map":
             pickable=True,
         )
         view_state = pdk.ViewState(latitude=14.329, longitude=120.936, zoom=12)
-        deck = pdk.Deck(
-        layers=[circle_layer, text_layer],
-        initial_view_state=view_state,
-        tooltip={"text": "{name}\n{aqi_cat}"}
+            deck = pdk.Deck(
+            layers=[circle_layer, text_layer],
+            initial_view_state=view_state,
+            tooltip={"text": "{name}\n{aqi_cat}"}
         )
 
 st.pydeck_chart(deck, use_container_width=True)
