@@ -925,8 +925,13 @@ def get_status(code):
         return latest_by_site[code]["cat"], latest_by_site[code]["color"]
     return "Unknown", "#888888"
 
-sites["aqi_cat"] = sites["location_code"].apply(lambda x: get_status(x)[0])
-sites["color_hex"] = sites["location_code"].apply(lambda x: get_status(x)[1])
+sites["aqi_cat"] = sites["location_code"].apply(
+    lambda x: latest_by_site.get(str(x), {}).get("cat", "Unknown")
+)
+
+sites["color_hex"] = sites["location_code"].apply(
+    lambda x: latest_by_site.get(str(x), {}).get("color", "#888888")
+)
 
 sites["r"] = sites["color_hex"].apply(lambda h: int(h[1:3],16))
 sites["g"] = sites["color_hex"].apply(lambda h: int(h[3:5],16))
