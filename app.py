@@ -1056,7 +1056,7 @@ if tab_choice == "City map":
         )
 
 st.pydeck_chart(deck, use_container_width=True)
-    else:
+        else:
         st.warning(
             "To enable the map, add either:\n"
             "1) `data/dasmarinas_barangays.geojson` **and** `data/site_binding.csv` (columns: polygon_name,location_code),\n"
