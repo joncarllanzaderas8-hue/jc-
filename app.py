@@ -925,6 +925,30 @@ def get_status(code):
         return latest_by_site[code]["cat"], latest_by_site[code]["color"]
     return "Unknown", "#888888"
 
+# Build latest status dictionary
+latest_by_site = {}
+
+for code in site_codes:
+    b = process_site(raw, code, steps, alpha, beta, auto_tune)
+
+    if b is None:
+        continue
+
+    proc = b["proc"]
+
+    if "aqi" not in proc.columns:
+        continue
+
+    val = float(proc["aqi"].iloc[-1])
+    cat, color = categorize_aqi(val)
+
+    latest_by_site[code] = {
+        "value": val,
+        "cat": cat,
+        "color": color
+    }
+
+# AFTER latest_by_site exists
 sites["aqi_cat"] = sites["location_code"].apply(
     lambda x: latest_by_site.get(str(x), {}).get("cat", "Unknown")
 )
