@@ -959,13 +959,13 @@ text_layer = pdk.Layer(
 if tab_choice == "City map":
     st.subheader("Dasmariñas barangay map — category coloring")
 
-    # Build a 'current status' per site using selected category scale
     latest_by_site = {}
     for code in site_codes:
         b = process_site(raw, code, steps, alpha, beta, auto_tune)
         if b is None:
             continue
         proc = b["proc"]
+
         if cat_scale.startswith("DENR") and "pm25" in proc.columns:
             val = float(proc["pm25"].iloc[-1])
             cat, color = categorize_pm25_denr(val)
@@ -974,39 +974,46 @@ if tab_choice == "City map":
                 continue
             val = float(proc["aqi"].iloc[-1])
             cat, color = categorize_aqi(val)
-        latest_by_site[code] = {"label": CODE2LABEL[code], "value": val, "cat": cat, "color": color}
 
-    # Files (optional)
-    gj_path = os.path.join("dasmarinas_barangays.geojson")      # GeoJSON polygons
-    bind_path = os.path.join("site_binding.csv")                # polygon_name,location_code
-    pts_path = os.path.join("barangays_dasmarinas.csv")         # name,lat,lon,location_code
+        latest_by_site[code] = {
+            "label": CODE2LABEL[code],
+            "value": val,
+            "cat": cat,
+            "color": color
+        }
 
-    def attach_color_to_feature(feat, latest_dict):
-        name = feat.get("properties", {}).get("name") or feat.get("properties", {}).get("NAME")
-        code = name_to_code.get(name)
-        if code and code in latest_dict:
-            cat = latest_dict[code]["cat"]
-            color_hex = latest_dict[code]["color"]
-            feat["properties"]["aqi_cat"] = cat
-            feat["properties"]["color_hex"] = color_hex
-        else:
-            feat["properties"]["aqi_cat"] = "Unknown"
-            feat["properties"]["color_hex"] = "#888888"
+    gj_path = os.path.join("dasmarinas_barangays.geojson")
+    bind_path = os.path.join("site_binding.csv")
+    pts_path = os.path.join("barangays_dasmarinas.csv")
 
-    def gj_color_getter(f):
-        hx = f["properties"]["color_hex"]
-        r, g, b = hex_to_rgb_tuple(hx)
-        return [r, g, b, 160]
-
+    # ---------------- GEOJSON MAP ----------------
     if os.path.exists(gj_path) and os.path.exists(bind_path):
+
         st.caption("Using GeoJSON polygons + site binding")
+
         with open(gj_path, "r", encoding="utf-8") as f:
             geojson = json.load(f)
-        bind_df = pd.read_csv(bind_path)  # columns: polygon_name, location_code
+
+        bind_df = pd.read_csv(bind_path)
         name_to_code = dict(zip(bind_df["polygon_name"], bind_df["location_code"]))
 
-        for feat in geojson.get("features", []):
-            attach_color_to_feature(feat, latest_by_site)
+        def attach_color_to_feature(feat):
+            name = feat.get("properties", {}).get("name")
+            code = name_to_code.get(name)
+
+            if code in latest_by_site:
+                feat["properties"]["aqi_cat"] = latest_by_site[code]["cat"]
+                feat["properties"]["color_hex"] = latest_by_site[code]["color"]
+            else:
+                feat["properties"]["aqi_cat"] = "Unknown"
+                feat["properties"]["color_hex"] = "#888888"
+
+        for feat in geojson["features"]:
+            attach_color_to_feature(feat)
+
+        def gj_color_getter(f):
+            r, g, b = hex_to_rgb_tuple(f["properties"]["color_hex"])
+            return [r, g, b, 160]
 
         layer = pdk.Layer(
             "GeoJsonLayer",
@@ -1015,57 +1022,77 @@ if tab_choice == "City map":
             filled=True,
             get_fill_color=gj_color_getter,
             get_line_color=[255, 255, 255],
-            lineWidthMinPixels=1,
             pickable=True,
         )
+
         view_state = pdk.ViewState(latitude=14.329, longitude=120.936, zoom=12)
-        deck = pdk.Deck(layers=[layer], initial_view_state=view_state, tooltip={"text": "{name}\n{aqi_cat}"})
+
+        deck = pdk.Deck(
+            layers=[layer],
+            initial_view_state=view_state,
+            tooltip={"text": "{name}\n{aqi_cat}"}
+        )
+
         st.pydeck_chart(deck, use_container_width=True)
 
+    # ---------------- POINT MAP ----------------
     elif os.path.exists(pts_path):
+
         st.caption("Using barangay point markers (lat/lon)")
-        pts = pd.read_csv(pts_path)  # name,lat,lon,location_code
 
-        def map_cat(row):
-            code = str(row["location_code"])
-            return latest_by_site.get(code, {}).get("cat", "Unknown")
+        pts = pd.read_csv(pts_path)
 
-        def map_color(row):
-            code = str(row["location_code"])
-            return latest_by_site.get(code, {}).get("color", "#888888")
+        pts["aqi_cat"] = pts["location_code"].apply(
+            lambda x: latest_by_site.get(str(x), {}).get("cat", "Unknown")
+        )
 
-        pts["aqi_cat"] = pts.apply(map_cat, axis=1)
-        pts["color_hex"] = pts.apply(map_color, axis=1)
+        pts["color_hex"] = pts["location_code"].apply(
+            lambda x: latest_by_site.get(str(x), {}).get("color", "#888888")
+        )
+
         pts["r"] = pts["color_hex"].apply(lambda h: hex_to_rgb_tuple(h)[0])
         pts["g"] = pts["color_hex"].apply(lambda h: hex_to_rgb_tuple(h)[1])
         pts["b"] = pts["color_hex"].apply(lambda h: hex_to_rgb_tuple(h)[2])
 
-        layer = pdk.Layer(
+        # 1 km coverage circles
+        circle_layer = pdk.Layer(
             "ScatterplotLayer",
             data=pts,
             get_position=["lon", "lat"],
-            get_radius=120,
-            get_fill_color=["r", "g", "b", 180],
+            get_radius=1000,
+            get_fill_color=["r", "g", "b", 80],
+            get_line_color=[255, 255, 255],
+            line_width_min_pixels=2,
             pickable=True,
         )
+
+        # labels
+        text_layer = pdk.Layer(
+            "TextLayer",
+            data=pts,
+            get_position=["lon", "lat"],
+            get_text="name",
+            get_size=16,
+            get_color=[255, 255, 255],
+            get_alignment_baseline="'bottom'",
+        )
+
         view_state = pdk.ViewState(latitude=14.329, longitude=120.936, zoom=12)
-            deck = pdk.Deck(
+
+        deck = pdk.Deck(
             layers=[circle_layer, text_layer],
             initial_view_state=view_state,
             tooltip={"text": "{name}\n{aqi_cat}"}
         )
 
-st.pydeck_chart(deck, use_container_width=True)
+        st.pydeck_chart(deck, use_container_width=True)
+
+    # ---------------- FALLBACK ----------------
     else:
         st.warning(
             "To enable the map, add either:\n"
-            "1) `data/dasmarinas_barangays.geojson` **and** `data/site_binding.csv` (columns: polygon_name,location_code),\n"
-            "   or\n"
-            "2) `data/barangays_dasmarinas.csv` with columns: name,lat,lon,location_code."
-        )
-        st.info(
-            "Tip: `location_code` can be any code present in your CSV (auto‑detected). "
-            "We color each barangay by the **selected** category scale (EPA AQI or DENR PM2.5)."
+            "1) `dasmarinas_barangays.geojson` and `site_binding.csv`\n"
+            "2) `barangays_dasmarinas.csv` with columns: name,lat,lon,location_code"
         )
 
 
