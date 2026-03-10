@@ -989,7 +989,7 @@ if tab_choice == "City map":
             color_hex = latest_dict[code]["color"]
             feat["properties"]["aqi_cat"] = cat
             feat["properties"]["color_hex"] = color_hex
-else:
+    else:
             feat["properties"]["aqi_cat"] = "Unknown"
             feat["properties"]["color_hex"] = "#888888"
 
@@ -998,7 +998,7 @@ else:
         r, g, b = hex_to_rgb_tuple(hx)
         return [r, g, b, 160]
 
-if os.path.exists(gj_path) and os.path.exists(bind_path):
+    if os.path.exists(gj_path) and os.path.exists(bind_path):
         st.caption("Using GeoJSON polygons + site binding")
         with open(gj_path, "r", encoding="utf-8") as f:
             geojson = json.load(f)
@@ -1022,7 +1022,7 @@ if os.path.exists(gj_path) and os.path.exists(bind_path):
         deck = pdk.Deck(layers=[layer], initial_view_state=view_state, tooltip={"text": "{name}\n{aqi_cat}"})
         st.pydeck_chart(deck, use_container_width=True)
 
-elif os.path.exists(pts_path):
+    elif os.path.exists(pts_path):
         st.caption("Using barangay point markers (lat/lon)")
         pts = pd.read_csv(pts_path)  # name,lat,lon,location_code
 
@@ -1056,7 +1056,7 @@ elif os.path.exists(pts_path):
         )
 
 st.pydeck_chart(deck, use_container_width=True)
-else:
+    else:
         st.warning(
             "To enable the map, add either:\n"
             "1) `data/dasmarinas_barangays.geojson` **and** `data/site_binding.csv` (columns: polygon_name,location_code),\n"
