@@ -989,7 +989,7 @@ if tab_choice == "City map":
             color_hex = latest_dict[code]["color"]
             feat["properties"]["aqi_cat"] = cat
             feat["properties"]["color_hex"] = color_hex
-    else:
+        else:
             feat["properties"]["aqi_cat"] = "Unknown"
             feat["properties"]["color_hex"] = "#888888"
 
