@@ -901,6 +901,58 @@ if tab_choice == "Compare sites":
                 st.plotly_chart(fig, use_container_width=True)
 
 
+sites = pd.DataFrame({
+    "name": [
+        "TUP Cavite",
+        "Paliparan III Jollibee",
+        "SM Dasma"
+    ],
+    "lat": [
+        14.3295,   # TUP Cavite
+        14.3198,   # Jollibee Paliparan III
+        14.3017    # SM Dasma
+    ],
+    "lon": [
+        120.9367,
+        120.9855,
+        120.9544
+    ],
+    "location_code": ["A", "B", "C"]
+})
+
+def get_status(code):
+    if code in latest_by_site:
+        return latest_by_site[code]["cat"], latest_by_site[code]["color"]
+    return "Unknown", "#888888"
+
+sites["aqi_cat"] = sites["location_code"].apply(lambda x: get_status(x)[0])
+sites["color_hex"] = sites["location_code"].apply(lambda x: get_status(x)[1])
+
+sites["r"] = sites["color_hex"].apply(lambda h: int(h[1:3],16))
+sites["g"] = sites["color_hex"].apply(lambda h: int(h[3:5],16))
+sites["b"] = sites["color_hex"].apply(lambda h: int(h[5:7],16))
+
+circle_layer = pdk.Layer(
+    "ScatterplotLayer",
+    data=sites,
+    get_position=["lon", "lat"],
+    get_radius=1000,  # 1 km radius
+    get_fill_color=["r","g","b",80],
+    get_line_color=[255,255,255],
+    line_width_min_pixels=2,
+    pickable=True,
+)
+
+text_layer = pdk.Layer(
+    "TextLayer",
+    data=sites,
+    get_position=["lon","lat"],
+    get_text="name",
+    get_size=16,
+    get_color=[255,255,255],
+    get_alignment_baseline="'bottom'"
+)
+
 # =====================================================================================
 # City map (Dasmariñas): color each barangay by selected category scale
 # =====================================================================================
@@ -997,8 +1049,13 @@ if tab_choice == "City map":
             pickable=True,
         )
         view_state = pdk.ViewState(latitude=14.329, longitude=120.936, zoom=12)
-        deck = pdk.Deck(layers=[layer], initial_view_state=view_state, tooltip={"text": "{name}\n{aqi_cat}"})
-        st.pydeck_chart(deck, use_container_width=True)
+       deck = pdk.Deck(
+    layers=[circle_layer, text_layer],
+    initial_view_state=view_state,
+    tooltip={"text": "{name}\n{aqi_cat}"}
+)
+
+st.pydeck_chart(deck, use_container_width=True)
     else:
         st.warning(
             "To enable the map, add either:\n"
