@@ -1011,7 +1011,7 @@ if tab_choice == "City map":
             "color": color
         }
 
-    gj_path = os.path.join("dasmarinas_barangays.geojson")
+    
     bind_path = os.path.join("site_binding.csv")
     pts_path = os.path.join("barangays_dasmarinas.csv")
 
