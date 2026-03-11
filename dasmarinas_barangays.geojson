@@ -51836,41 +51836,49 @@
   ]
 }
 
-[
-  {
-    "type": "Feature",
-    "properties": {
-      "name": "TUP Cavite",
-      "category": "University",
-      "address": "Carlos Trinidad Avenue, Salawag, Dasmariñas, Cavite"
+{
+      "type": "Feature",
+      "properties": {
+        "name": "TUP Cavite",
+        "amenity": "university",
+        "admin_level": "10",
+        "boundary": "educational"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          120.966111,
+          14.345556
+        ]
+      }
     },
-    "geometry": {
-      "type": "Point",
-      "coordinates": [120.966111, 14.345556]
-    }
-  },
-  {
-    "type": "Feature",
-    "properties": {
-      "name": "Jollibee Paliparan III",
-      "category": "Fast Food Restaurant",
-      "address": "Molino-Paliparan Rd, Paliparan III, Dasmariñas, Cavite"
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Jollibee Paliparan III",
+        "amenity": "fast_food",
+        "brand": "Jollibee"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          120.982900,
+          14.314100
+        ]
+      }
     },
-    "geometry": {
-      "type": "Point",
-      "coordinates": [120.9829, 14.3141]
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "SM City Dasmariñas",
+        "shop": "mall",
+        "brand": "SM"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          120.956678,
+          14.301506
+        ]
+      }
     }
-  },
-  {
-    "type": "Feature",
-    "properties": {
-      "name": "SM City Dasmariñas",
-      "category": "Shopping Mall",
-      "address": "Governor's Drive corner Aguinaldo Highway, Sampaloc 1, Dasmariñas, Cavite"
-    },
-    "geometry": {
-      "type": "Point",
-      "coordinates": [120.956678, 14.301506]
-    }
-  }
-]
