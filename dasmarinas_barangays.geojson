@@ -1,3 +1,42 @@
+[
+  {
+    "type": "Feature",
+    "properties": {
+      "name": "TUP Cavite",
+      "category": "University",
+      "address": "Carlos Trinidad Avenue, Salawag, Dasmariñas, Cavite"
+    },
+    "geometry": {
+      "type": "Point",
+      "coordinates": [120.966111, 14.345556]
+    }
+  },
+  {
+    "type": "Feature",
+    "properties": {
+      "name": "Jollibee Paliparan III",
+      "category": "Fast Food Restaurant",
+      "address": "Molino-Paliparan Rd, Paliparan III, Dasmariñas, Cavite"
+    },
+    "geometry": {
+      "type": "Point",
+      "coordinates": [120.9829, 14.3141]
+    }
+  },
+  {
+    "type": "Feature",
+    "properties": {
+      "name": "SM City Dasmariñas",
+      "category": "Shopping Mall",
+      "address": "Governor's Drive corner Aguinaldo Highway, Sampaloc 1, Dasmariñas, Cavite"
+    },
+    "geometry": {
+      "type": "Point",
+      "coordinates": [120.956678, 14.301506]
+    }
+  }
+]
+
 {
   "type": "FeatureCollection",
   "generator": "overpass-turbo",
