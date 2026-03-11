@@ -51833,54 +51833,7 @@
       "id": "node/8148292398"
     }
   ]
-{
-      "type": "Feature",
-      "properties": {
-        "@id": "node/TUPC_01",
-        "admin_level": "10",
-        "amenity": "university",
-        "name": "TUP Cavite",
-        "type": "educational"
-      },
-      "geometry": {
-        "type": "Point",
-        "coordinates": [
-          120.966111,
-          14.345556
-        ]
-      },
-      "id": "node/TUPC_01"
-    },
-    {
-      "type": "Feature",
-      "properties": {
-        "@id": "node/JOLLIBEE_P3",
-        "amenity": "fast_food",
-        "brand": "Jollibee",
-        "name": "Jollibee Paliparan III"
-      },
-      "geometry": {
-        "type": "Point",
-        "coordinates": [
-          120.982900,
-          14.314100
-        ]
-      },
-      "id": "node/JOLLIBEE_P3"
-    },
-    {
-      "type": "Feature",
-      "properties": {
-        "@id": "node/SM_DASMA",
-        "name": "SM City Dasmariñas",
-        "shop": "mall"
-      },
-      "geometry": {
-        "type": "Point",
-        "coordinates": [
-          120.956678,
-          14.301506
-        ]
+
       },
       "id": "node/SM_DASMA"
     }
